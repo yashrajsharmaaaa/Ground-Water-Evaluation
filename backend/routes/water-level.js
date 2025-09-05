@@ -52,7 +52,6 @@ const RAJASTHAN_DISTRICTS = [
   { name: "Nagaur", lat: 27.20, lon: 73.73 },
   { name: "Neem ka Thana", lat: 27.74, lon: 75.78 },
   { name: "Pali", lat: 25.77, lon: 73.32 },
-  { name: "Phalodi", lat: 27.13, lon: 72.36 },
   { name: "Pratapgarh", lat: 24.03, lon: 74.78 },
   { name: "Rajsamand", lat: 25.07, lon: 73.88 },
   { name: "Salumbar", lat: 24.14, lon: 74.04 },
