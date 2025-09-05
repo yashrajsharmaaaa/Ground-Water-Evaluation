@@ -111,7 +111,10 @@ function formatDate(date) {
 
 function stripCodeFences(s) {
   if (!s) return s;
-  return s.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+  return s
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
 }
 
 function extractFirstJSONObject(s) {
@@ -151,7 +154,12 @@ function getLLMContent(resp) {
 // -------------------- Intent Analysis --------------------
 function analyzeIntent(message, providedDistrict, lat, lon, date) {
   const lowerMessage = message.toLowerCase();
-  const needsApiCall = lowerMessage.includes("highest") || lowerMessage.includes("ground water level") || lowerMessage.includes("water level");
+  const needsApiCall =
+    lowerMessage.includes("highest") ||
+    lowerMessage.includes("lowest") ||
+    lowerMessage.includes("ground water level") ||
+    lowerMessage.includes("water level");
+  const isLowest = lowerMessage.includes("lowest");
   const dataType = needsApiCall ? "wris" : "knowledge";
   const missingFields = [];
   let inferredDistrict = null;
@@ -173,6 +181,7 @@ function analyzeIntent(message, providedDistrict, lat, lon, date) {
   if (!date) missingFields.push("date");
 
   if (lowerMessage.includes("previous year")) requestedRange = "previous_year";
+  if (lowerMessage.includes("month")) requestedRange = "monthly";
 
   return {
     needsApiCall,
@@ -180,12 +189,17 @@ function analyzeIntent(message, providedDistrict, lat, lon, date) {
     missingFields,
     requestedRange,
     inferredDistrict,
+    isLowest,
     processedMessage: message,
   };
 }
 
 // -------------------- Data Fetch Functions --------------------
-async function fetchGroundwaterData({ district, start, end }) {
+async function fetchGroundwaterData(
+  { district, start, end },
+  retries = 3,
+  delay = 1000
+) {
   const formattedStart = formatDate(start);
   const formattedEnd = formatDate(end);
   if (!formattedStart || !formattedEnd) {
@@ -197,35 +211,81 @@ async function fetchGroundwaterData({ district, start, end }) {
   const url = `https://indiawris.gov.in/Dataset/Ground%20Water%20Level?stateName=Rajasthan&districtName=${encodeURIComponent(
     district
   )}&agencyName=CGWB&startdate=${formattedStart}&enddate=${formattedEnd}&download=false&page=0&size=10000`;
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-  if (!r.ok) throw new Error(`WRIS API failed (${r.status})`);
-  const data = await r.json();
-  cache.set(cacheKey, data);
-  return data;
+
+  for (let i = 0; i < retries; i++) {
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (r.status === 429) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, delay * Math.pow(2, i))
+        );
+        continue;
+      }
+      if (!r.ok) throw new Error(`WRIS API failed (${r.status})`);
+      const data = await r.json();
+      cache.set(cacheKey, data);
+      return data;
+    } catch (err) {
+      if (i === retries - 1) throw err;
+    }
+  }
+  throw new Error("WRIS API rate limit exceeded after retries");
 }
 
-async function fetchLocalWaterLevel({ district, lat, lon, start, end }) {
+async function fetchLocalWaterLevel(
+  { district, lat, lon, start, end },
+  retries = 3,
+  delay = 1000
+) {
   try {
-    const url = `${process.env.BASE_URL || "http://localhost:3000"}/api/water-levels`;
-    const resp = await axios.post(url, {
-      district,
-      lat,
-      lon,
-      start: formatDate(start),
-      end: formatDate(end),
-    }, { timeout: 10_000 });
-    return resp.data;
+    const url = `${
+      process.env.BASE_URL || "http://localhost:3000"
+    }/api/water-levels`;
+    for (let i = 0; i < retries; i++) {
+      try {
+        const resp = await axios.post(
+          url,
+          {
+            district,
+            lat,
+            lon,
+            start: formatDate(start),
+            end: formatDate(end),
+          },
+          { timeout: 10_000 }
+        );
+        return resp.data;
+      } catch (err) {
+        if (err.response?.status === 429) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, delay * Math.pow(2, i))
+          );
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error("Local API rate limit exceeded after retries");
   } catch (err) {
     console.error("Local water-level fetch error:", err.message || err);
     throw err;
   }
 }
 
-function summarizeWrisForChat(wrisData = {}, lat, lon, district) {
-  const cacheKey = `summary_wris_${district}_${lat || ''}_${lon || ''}`;
+function summarizeWrisForChat(
+  wrisData = {},
+  lat,
+  lon,
+  district,
+  isLowest = false,
+  year = null
+) {
+  const cacheKey = `summary_wris_${district}_${lat || ""}_${
+    lon || ""
+  }_${isLowest}_${year || ""}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   const summary = {
@@ -242,7 +302,8 @@ function summarizeWrisForChat(wrisData = {}, lat, lon, district) {
       const lonS = parseFloat(s.longitude ?? s.lon ?? s.Longitude ?? NaN);
       const level = parseFloat(s.dataValue ?? s.waterLevel ?? NaN);
       const t = s.dataTime || s.DataTime || s.timestamp || null;
-      if (!code || isNaN(latS) || isNaN(lonS) || isNaN(level) || level <= 0) continue;
+      if (!code || isNaN(latS) || isNaN(lonS) || isNaN(level) || level <= 0)
+        continue;
       if (!stations.has(code)) {
         stations.set(code, {
           code,
@@ -253,31 +314,81 @@ function summarizeWrisForChat(wrisData = {}, lat, lon, district) {
           distanceKm: lat && lon ? haversine(lat, lon, latS, lonS) : null,
         });
       }
-      stations.get(code).history.push({ date: t ? t.split("T")[0] : null, value: level });
+      stations
+        .get(code)
+        .history.push({ date: t ? t.split("T")[0] : null, value: level });
     }
 
-    const arr = Array.from(stations.values()).filter((st) => st.history.length > 0);
+    const arr = Array.from(stations.values()).filter(
+      (st) => st.history.length > 0
+    );
     if (arr.length > 0) {
       arr.forEach((st) => {
         st.history.sort((a, b) => new Date(a.date) - new Date(b.date));
       });
-      arr.sort((a, b) => {
-        const aLatest = a.history[a.history.length - 1]?.value ?? -Infinity;
-        const bLatest = b.history[b.history.length - 1]?.value ?? -Infinity;
-        return bLatest - aLatest;
-      });
-      const highest = arr[0];
-      const latest = highest.history[highest.history.length - 1];
-      summary.highestStation = {
-        stationName: highest.name,
-        stationCode: highest.code,
-        latitude: highest.latitude,
-        longitude: highest.longitude,
-        distanceKm: highest.distanceKm ? highest.distanceKm.toFixed(2) : null,
-        latestDate: latest ? latest.date : null,
-        highestWaterLevel: latest && !isNaN(latest.value) ? latest.value.toFixed(2) : null,
-        note: "This is a lightweight summary derived from WRIS raw rows.",
-      };
+      if (year) {
+        // Aggregate by month for the specified year
+        const monthlyData = {};
+        arr.forEach((st) => {
+          st.history.forEach((h) => {
+            if (h.date && h.date.startsWith(year)) {
+              const month = h.date.slice(0, 7); // YYYY-MM
+              if (!monthlyData[month]) {
+                monthlyData[month] = {
+                  total: 0,
+                  count: 0,
+                  stations: new Set(),
+                };
+              }
+              monthlyData[month].total += h.value;
+              monthlyData[month].count += 1;
+              monthlyData[month].stations.add(st.name);
+            }
+          });
+        });
+        const monthlyAverages = Object.entries(monthlyData).map(
+          ([month, data]) => ({
+            month,
+            average: data.total / data.count,
+            stations: Array.from(data.stations),
+          })
+        );
+        monthlyAverages.sort((a, b) =>
+          isLowest ? a.average - b.average : b.average - a.average
+        );
+        if (monthlyAverages.length > 0) {
+          const target = monthlyAverages[0];
+          summary.targetStation = {
+            month: target.month,
+            averageWaterLevel: target.average.toFixed(2),
+            stations: target.stations,
+            note: `Average ${
+              isLowest ? "lowest" : "highest"
+            } water level for ${year}`,
+          };
+        }
+      } else {
+        arr.sort((a, b) => {
+          const aLatest = a.history[a.history.length - 1]?.value ?? -Infinity;
+          const bLatest = b.history[a.history.length - 1]?.value ?? -Infinity;
+          return isLowest ? aLatest - bLatest : bLatest - aLatest;
+        });
+        const target = arr[0];
+        const latest = target.history[target.history.length - 1];
+        summary.targetStation = {
+          stationName: target.name,
+          stationCode: target.code,
+          latitude: target.latitude,
+          longitude: target.longitude,
+          distanceKm: target.distanceKm ? target.distanceKm.toFixed(2) : null,
+          latestDate: latest ? latest.date : null,
+          targetWaterLevel:
+            latest && !isNaN(latest.value) ? latest.value.toFixed(2) : null,
+          note: `This is a lightweight summary derived from WRIS raw rows for ${
+            isLowest ? "lowest" : "highest"
+          } water level.`,
+        };
+      }
       summary.totalStationsWithHistory = arr.length;
     }
   }
@@ -285,8 +396,17 @@ function summarizeWrisForChat(wrisData = {}, lat, lon, district) {
   return summary;
 }
 
-function summarizeLocalForChat(localData = {}, lat, lon, district) {
-  const cacheKey = `summary_local_${district}_${lat || ''}_${lon || ''}`;
+function summarizeLocalForChat(
+  localData = {},
+  lat,
+  lon,
+  district,
+  isLowest = false,
+  year = null
+) {
+  const cacheKey = `summary_local_${district}_${lat || ""}_${
+    lon || ""
+  }_${isLowest}_${year || ""}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   const summary = {
@@ -297,33 +417,143 @@ function summarizeLocalForChat(localData = {}, lat, lon, district) {
 
   if (localData.data) {
     const arr = localData.data
-      .filter((s) => s.latitude && s.longitude && s.history?.length > 0 && s.history.some(h => h.value > 0))
+      .filter(
+        (s) =>
+          s.latitude &&
+          s.longitude &&
+          s.history?.length > 0 &&
+          s.history.some((h) => h.value > 0)
+      )
       .map((s) => ({
         code: s.stationCode,
         name: s.stationName,
         latitude: s.latitude,
         longitude: s.longitude,
         history: s.history || [],
-        distanceKm: lat && lon ? haversine(lat, lon, s.latitude, s.longitude) : null,
+        distanceKm:
+          lat && lon ? haversine(lat, lon, s.latitude, s.longitude) : null,
       }));
-    arr.sort((a, b) => {
-      const aLatest = a.history[a.history.length - 1]?.value ?? -Infinity;
-      const bLatest = b.history[b.history.length - 1]?.value ?? -Infinity;
-      return bLatest - aLatest;
+    if (year) {
+      const monthlyData = {};
+      arr.forEach((st) => {
+        st.history.forEach((h) => {
+          if (h.date && h.date.startsWith(year)) {
+            const month = h.date.slice(0, 7);
+            if (!monthlyData[month]) {
+              monthlyData[month] = { total: 0, count: 0, stations: new Set() };
+            }
+            monthlyData[month].total += h.value;
+            monthlyData[month].count += 1;
+            monthlyData[month].stations.add(st.name);
+          }
+        });
+      });
+      const monthlyAverages = Object.entries(monthlyData).map(
+        ([month, data]) => ({
+          month,
+          average: data.total / data.count,
+          stations: Array.from(data.stations),
+        })
+      );
+      monthlyAverages.sort((a, b) =>
+        isLowest ? a.average - b.average : b.average - a.average
+      );
+      if (monthlyAverages.length > 0) {
+        const target = monthlyAverages[0];
+        summary.targetStation = {
+          month: target.month,
+          averageWaterLevel: target.average.toFixed(2),
+          stations: target.stations,
+          note: `Average ${
+            isLowest ? "lowest" : "highest"
+          } water level for ${year}`,
+        };
+      }
+    } else {
+      arr.sort((a, b) => {
+        const aLatest = a.history[a.history.length - 1]?.value ?? -Infinity;
+        const bLatest = b.history[b.history.length - 1]?.value ?? -Infinity;
+        return isLowest ? aLatest - bLatest : bLatest - aLatest;
+      });
+      if (arr.length > 0) {
+        const target = arr[0];
+        const latest = target.history[target.history.length - 1];
+        summary.targetStation = {
+          stationName: target.name,
+          stationCode: target.code,
+          latitude: target.latitude,
+          longitude: target.longitude,
+          distanceKm: target.distanceKm ? target.distanceKm.toFixed(2) : null,
+          latestDate: latest ? latest.date : null,
+          targetWaterLevel:
+            latest && !isNaN(latest.value) ? latest.value.toFixed(2) : null,
+        };
+      }
+    }
+  }
+  cache.set(cacheKey, summary);
+  return summary;
+}
+
+function summarizeContextForChat(context, year, isLowest = false) {
+  const cacheKey = `summary_context_${year}_${isLowest}`;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+
+  const summary = {
+    source: "context",
+    stationsReturned: context.nearestStation ? 1 : 0,
+    district:
+      getDistrictFromCoords(
+        context.userLocation?.lat,
+        context.userLocation?.lon
+      ) || null,
+  };
+
+  if (context.historicalLevels && year) {
+    const monthlyData = {};
+    context.historicalLevels.forEach((h) => {
+      if (h.date && h.date.startsWith(year)) {
+        const month = h.date.slice(0, 7);
+        if (!monthlyData[month]) {
+          monthlyData[month] = { total: 0, count: 0 };
+        }
+        monthlyData[month].total += h.waterLevel;
+        monthlyData[month].count += 1;
+      }
     });
-    if (arr.length > 0) {
-      const highest = arr[0];
-      const latest = highest.history[highest.history.length - 1];
-      summary.highestStation = {
-        stationName: highest.name,
-        stationCode: highest.code,
-        latitude: highest.latitude,
-        longitude: highest.longitude,
-        distanceKm: highest.distanceKm ? highest.distanceKm.toFixed(2) : null,
-        latestDate: latest ? latest.date : null,
-        highestWaterLevel: latest && !isNaN(latest.value) ? latest.value.toFixed(2) : null,
+    const monthlyAverages = Object.entries(monthlyData).map(
+      ([month, data]) => ({
+        month,
+        average: data.total / data.count,
+      })
+    );
+    monthlyAverages.sort((a, b) =>
+      isLowest ? a.average - b.average : b.average - a.average
+    );
+    if (monthlyAverages.length > 0) {
+      const target = monthlyAverages[0];
+      summary.targetStation = {
+        month: target.month,
+        averageWaterLevel: target.average.toFixed(2),
+        stationName: context.nearestStation?.stationName || "Unknown",
+        note: `Average ${
+          isLowest ? "lowest" : "highest"
+        } water level for ${year} from context`,
       };
     }
+  } else if (context.nearestStation && context.currentWaterLevel) {
+    summary.targetStation = {
+      stationName: context.nearestStation.stationName,
+      latitude: context.nearestStation.latitude,
+      longitude: context.nearestStation.longitude,
+      distanceKm: context.nearestStation.distanceKm,
+      latestDate: context.userLocation?.date || null,
+      targetWaterLevel:
+        parseFloat(context.currentWaterLevel)?.toFixed(2) || null,
+      note: `Current ${
+        isLowest ? "lowest" : "highest"
+      } water level from context`,
+    };
   }
   cache.set(cacheKey, summary);
   return summary;
@@ -332,12 +562,24 @@ function summarizeLocalForChat(localData = {}, lat, lon, district) {
 // -------------------- Chat Endpoint --------------------
 router.post("/chat", async (req, res) => {
   try {
-    const { message, lat, lon, date, context, district: providedDistrict } = req.body;
+    const {
+      message,
+      lat,
+      lon,
+      date,
+      context,
+      district: providedDistrict,
+    } = req.body;
     if (!message) return res.status(400).json({ error: "Message is required" });
 
     // Precompute district from lat/lon for fallback
     let precomputedDistrict = null;
-    if (lat !== undefined && lon !== undefined && !isNaN(Number(lat)) && !isNaN(Number(lon))) {
+    if (
+      lat !== undefined &&
+      lon !== undefined &&
+      !isNaN(Number(lat)) &&
+      !isNaN(Number(lon))
+    ) {
       try {
         precomputedDistrict = getDistrictFromCoords(Number(lat), Number(lon));
       } catch (e) {
@@ -345,11 +587,16 @@ router.post("/chat", async (req, res) => {
       }
     }
 
+    let contextRelevant = false;
     // Analyze intent locally
     const analysis = analyzeIntent(message, providedDistrict, lat, lon, date);
 
     // Determine finalDistrict: providedDistrict > inferredDistrict > precomputedDistrict
-    let finalDistrict = providedDistrict || analysis.inferredDistrict || precomputedDistrict || null;
+    let finalDistrict =
+      providedDistrict ||
+      analysis.inferredDistrict ||
+      precomputedDistrict ||
+      null;
 
     // Get coordinates from district if lat/lon not provided
     let effectiveLat = lat;
@@ -363,27 +610,54 @@ router.post("/chat", async (req, res) => {
       }
     }
 
+    let effectiveContext;
+    if ("context" in req.body) {
+      if (req.body.context === false) {
+        effectiveContext = false; // explicitly disabled
+      } else {
+        effectiveContext = req.body.context; // provided object
+      }
+    } else {
+      effectiveContext = false; // not provided at all → default false
+    }
+
+    if (effectiveContext && analysis.inferredDistrict) {
+      const contextDistrict = effectiveContext.userLocation
+        ? getDistrictFromCoords(
+            effectiveContext.userLocation.lat,
+            effectiveContext.userLocation.lon
+          )
+        : null;
+      contextRelevant = contextDistrict === analysis.inferredDistrict;
+    }
+
     // If WRIS or local is requested but no district, disable API call
-    if (analysis.needsApiCall && (analysis.dataType === "wris" || analysis.dataType === "local") && !finalDistrict) {
-      console.warn(`${analysis.dataType} requested but district unavailable; using knowledge.`);
+    if (
+      analysis.needsApiCall &&
+      (analysis.dataType === "wris" || analysis.dataType === "local") &&
+      !finalDistrict
+    ) {
+      console.warn(
+        `${analysis.dataType} requested but district unavailable; using knowledge.`
+      );
       analysis.needsApiCall = false;
       analysis.dataType = "knowledge";
       analysis.processedMessage = `${message} (no district available, using model knowledge)`;
     }
 
-    // Prepare effectiveContext
-    let effectiveContext = context !== undefined ? context : req.session.context || false;
-
-    // Fetch data if required
+    // Fetch data if required and context is not relevant
     let apiSummary = null;
-    if (analysis.needsApiCall) {
+    if (analysis.needsApiCall && !contextRelevant) {
       let endDate = date ? new Date(date) : new Date();
       let startDate;
 
       if (analysis.requestedRange === "previous_year") {
         startDate = new Date(endDate);
         startDate.setFullYear(startDate.getFullYear() - 1);
-      } else if (analysis.requestedRange === "live") {
+      } else if (
+        analysis.requestedRange === "live" ||
+        analysis.requestedRange === "monthly"
+      ) {
         startDate = new Date(endDate);
         startDate.setFullYear(startDate.getFullYear() - 1);
       } else {
@@ -395,26 +669,50 @@ router.post("/chat", async (req, res) => {
         const fetchPromises = [];
         if (analysis.dataType === "wris" && finalDistrict) {
           fetchPromises.push(
-            fetchGroundwaterData({ district: finalDistrict, start: startDate, end: endDate })
-              .then(rawWris => ({
-                source: "wris",
-                data: summarizeWrisForChat(rawWris, effectiveLat, effectiveLon, finalDistrict),
-                rawCount: rawWris.data ? rawWris.data.length : 0,
-              }))
+            fetchGroundwaterData({
+              district: finalDistrict,
+              start: startDate,
+              end: endDate,
+            }).then((rawWris) => ({
+              source: "wris",
+              data: summarizeWrisForChat(
+                rawWris,
+                effectiveLat,
+                effectiveLon,
+                finalDistrict,
+                analysis.isLowest,
+                analysis.requestedRange === "monthly" ? "2025" : null
+              ),
+              rawCount: rawWris.data ? rawWris.data.length : 0,
+            }))
           );
         }
         if (analysis.dataType === "local" && finalDistrict) {
           fetchPromises.push(
-            fetchLocalWaterLevel({ district: finalDistrict, lat: effectiveLat, lon: effectiveLon, start: startDate, end: endDate })
-              .then(rawLocal => ({
-                source: "local",
-                data: summarizeLocalForChat(rawLocal, effectiveLat, effectiveLon, finalDistrict),
-                rawCount: rawLocal.data ? rawLocal.data.length : 0,
-              }))
+            fetchLocalWaterLevel({
+              district: finalDistrict,
+              lat: effectiveLat,
+              lon: effectiveLon,
+              start: startDate,
+              end: endDate,
+            }).then((rawLocal) => ({
+              source: "local",
+              data: summarizeLocalForChat(
+                rawLocal,
+                effectiveLat,
+                effectiveLon,
+                finalDistrict,
+                analysis.isLowest,
+                analysis.requestedRange === "monthly" ? "2025" : null
+              ),
+              rawCount: rawLocal.data ? rawLocal.data.length : 0,
+            }))
           );
         }
 
-        const results = await Promise.race(fetchPromises.map(p => p.catch(e => ({ error: e }))));
+        const results = await Promise.race(
+          fetchPromises.map((p) => p.catch((e) => ({ error: e })))
+        );
         if (results.error) throw results.error;
 
         apiSummary = results.data;
@@ -423,12 +721,27 @@ router.post("/chat", async (req, res) => {
         req.session.context = effectiveContext;
       } catch (err) {
         console.error("Data fetch error:", err);
-        apiSummary = { error: "Failed data fetch", detail: err.message || String(err) };
+        apiSummary = {
+          error: "Failed data fetch",
+          detail: err.message || String(err),
+        };
         effectiveContext = JSON.stringify(apiSummary, null, 2);
         req.session.context = effectiveContext;
         analysis.dataType = "knowledge";
         analysis.processedMessage = `${message} (data fetch failed, using model knowledge)`;
       }
+    } else if (
+      contextRelevant &&
+      effectiveContext &&
+      analysis.requestedRange === "monthly"
+    ) {
+      apiSummary = summarizeContextForChat(
+        effectiveContext,
+        "2025",
+        analysis.isLowest
+      );
+      effectiveContext = JSON.stringify(apiSummary, null, 2);
+      req.session.context = effectiveContext;
     }
 
     // Generate final response
@@ -436,7 +749,7 @@ router.post("/chat", async (req, res) => {
 You are JalMitra 🌊 — a friendly, authoritative groundwater advisor for researchers, planners, and policymakers.
 You must produce a concise, actionable reply that:
 - Uses available context (the JSON in the "Context" block) when relevant.
-- If context was fetched from WRIS or local, reference the station with the highest groundwater level (least negative depth), including station name, latest value, and date.
+- If context was fetched from WRIS, local, or provided context, reference the station or month with the target (highest/lowest) water level, including station name, value, and date or month.
 - If data is sparse or fetch failed, state which fields were missing or the error, and make a best-effort reply using model knowledge.
 - Add short decision-support notes (2-3 bullet actions for researchers/planners).
 - If a district was inferred from the message, mention "inferred district: <name>".
@@ -446,10 +759,16 @@ Keep tone professional, slightly warm. Do NOT reveal chain-of-thought. You may i
     const genUser = `
 User message: ${JSON.stringify(analysis.processedMessage)}
 Context: ${effectiveContext || "No context available"}
-API summary (if any): ${apiSummary ? JSON.stringify(apiSummary, null, 2) : "none"}
+API summary (if any): ${
+      apiSummary ? JSON.stringify(apiSummary, null, 2) : "none"
+    }
 Missing fields: ${JSON.stringify(analysis.missingFields)}
 District used: ${finalDistrict || "none"}
-Coordinates used: ${effectiveLat && effectiveLon ? `lat: ${effectiveLat}, lon: ${effectiveLon}` : "none"}
+Coordinates used: ${
+      effectiveLat && effectiveLon
+        ? `lat: ${effectiveLat}, lon: ${effectiveLon}`
+        : "none"
+    }
 
 Task: Provide a helpful answer to the user. If you could not fetch live data because some fields were missing or API failed, say that you made a best-effort reply and list what you would need to fetch live data (district/lat/lon/date). If you used an inferred district, include "inferred district: <name>". If you used district coordinates, include "using district coordinates for <name>".
 `;
@@ -475,15 +794,20 @@ Task: Provide a helpful answer to the user. If you could not fetch live data bec
       );
     } catch (err) {
       console.error("LLM generation error:", err);
-      return res.status(500).json({ error: "Failed to generate response", detail: err.message || String(err) });
+      return res.status(500).json({
+        error: "Failed to generate response",
+        detail: err.message || String(err),
+      });
     }
 
-    const finalText = getLLMContent(genResp) || "Sorry — I couldn't produce a response right now.";
+    const finalText =
+      getLLMContent(genResp) ||
+      "Sorry — I couldn't produce a response right now.";
 
     return res.json({
       response: finalText,
       meta: {
-        usedApi: !!analysis.needsApiCall,
+        usedApi: !!analysis.needsApiCall && !contextRelevant,
         apiSummary: apiSummary || null,
         finalDistrict,
         effectiveLat,
@@ -493,7 +817,10 @@ Task: Provide a helpful answer to the user. If you could not fetch live data bec
     });
   } catch (err) {
     console.error("CHAT ROUTE ERROR:", err);
-    res.status(500).json({ error: "Failed to process request", detail: err.message || String(err) });
+    res.status(500).json({
+      error: "Failed to process request",
+      detail: err.message || String(err),
+    });
   }
 });
 
