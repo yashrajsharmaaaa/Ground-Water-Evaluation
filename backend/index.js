@@ -1,7 +1,7 @@
 import express from "express";
 import session from "express-session";
 import cors from "cors";  
-import waterLevel from "./routes/water-level.js";
+import waterLevelRouter from "./routes/water-level.js";
 import chat from "./routes/chat.js";
 
 const app = express();
@@ -30,7 +30,7 @@ app.get("/",(req, res)=> {
   res.send("backend running ✅")
 })
 
-app.use("/api", waterLevel);
+app.use("/api", waterLevelRouter);
 app.use("/api", chat);
 
 app.listen(3000, () => {
