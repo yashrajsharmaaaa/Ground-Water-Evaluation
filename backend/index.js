@@ -26,6 +26,10 @@ app.use(
   })
 );
 
+app.get("/",(req, res)=> {
+  res.send("backend running ✅")
+})
+
 app.use("/api", waterLevel);
 app.use("/api", chat);
 

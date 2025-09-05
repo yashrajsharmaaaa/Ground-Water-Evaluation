@@ -242,7 +242,7 @@ async function fetchLocalWaterLevel(
 ) {
   try {
     const url = `${
-      process.env.BASE_URL || "http://localhost:3000"
+      process.env.BASE_URL || "https://sih-25068-ground-water-evaluation.vercel.app/"
     }/api/water-levels`;
     for (let i = 0; i < retries; i++) {
       try {
