@@ -403,9 +403,9 @@ router.post("/water-levels", async (req, res) => {
       stressAnalysis,
       plotData,
     });
-  } catch (err) {
+    } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to fetch or process groundwater data" });
+    res.status(500).json({ error: "Failed to fetch or process groundwater data", detail: err.message, stack: err.stack });
   }
 });
 
