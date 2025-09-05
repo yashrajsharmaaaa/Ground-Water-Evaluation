@@ -210,7 +210,7 @@ async function fetchGroundwaterData(
 
   const url = `https://indiawris.gov.in/Dataset/Ground%20Water%20Level?stateName=Rajasthan&districtName=${encodeURIComponent(
     district
-  )}&agencyName=CGWB&startdate=${formattedStart}&enddate=${formattedEnd}&download=false&page=0&size=10000`;
+  )}&agencyName=CGWB&startdate=${formattedStart}&enddate=${formattedEnd}&download=false&page=0&size=1000`;
 
   for (let i = 0; i < retries; i++) {
     try {
@@ -718,7 +718,7 @@ router.post("/chat", async (req, res) => {
         apiSummary = results.data;
         apiSummary._rawCount = results.rawCount;
         effectiveContext = JSON.stringify(apiSummary, null, 2);
-        req.session.context = effectiveContext;
+        req.body.context = effectiveContext;
       } catch (err) {
         console.error("Data fetch error:", err);
         apiSummary = {
@@ -726,7 +726,7 @@ router.post("/chat", async (req, res) => {
           detail: err.message || String(err),
         };
         effectiveContext = JSON.stringify(apiSummary, null, 2);
-        req.session.context = effectiveContext;
+        req.body.context = effectiveContext;
         analysis.dataType = "knowledge";
         analysis.processedMessage = `${message} (data fetch failed, using model knowledge)`;
       }
@@ -741,7 +741,7 @@ router.post("/chat", async (req, res) => {
         analysis.isLowest
       );
       effectiveContext = JSON.stringify(apiSummary, null, 2);
-      req.session.context = effectiveContext;
+      req.body.context = effectiveContext;
     }
 
     // Generate final response

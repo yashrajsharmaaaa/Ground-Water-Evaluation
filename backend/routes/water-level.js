@@ -115,16 +115,12 @@ router.post("/water-levels", async (req, res) => {
       return res.status(400).json({ error: "Unable to determine district from coordinates" });
     }
 
-    console.log(district)
-
     const endDate = new Date(date);
     const startDate = new Date(endDate);
     startDate.setFullYear(startDate.getFullYear() - 10);
     const formattedStart = startDate.toISOString().split("T")[0];
     const formattedEnd = endDate.toISOString().split("T")[0];
 
-    console.log(startDate)
-    console.log(endDate)
 
     const url = `https://indiawris.gov.in/Dataset/Ground%20Water%20Level?stateName=Rajasthan&districtName=${encodeURIComponent(district)}&agencyName=CGWB&startdate=${formattedStart}&enddate=${formattedEnd}&download=false&page=0&size=10000`;
     const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" } });
