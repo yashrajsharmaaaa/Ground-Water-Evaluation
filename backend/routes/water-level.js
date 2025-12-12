@@ -40,6 +40,7 @@ router.post("/water-levels", async (req, res) => {
     }
 
     const district = await getDistrict(lat, lon);
+    
     if (district === "Unknown") {
       return res
         .status(400)
@@ -48,21 +49,37 @@ router.post("/water-levels", async (req, res) => {
 
     const endDate = new Date(date);
     const startDate = new Date(endDate);
-    startDate.setFullYear(startDate.getFullYear() - 10);
+    startDate.setFullYear(startDate.getFullYear() - 10); // 10 years of historical data
     const formattedStart = startDate.toISOString().split("T")[0];
     const formattedEnd = endDate.toISOString().split("T")[0];
 
     const url = `https://indiawris.gov.in/Dataset/Ground%20Water%20Level?stateName=Rajasthan&districtName=${encodeURIComponent(
       district
     )}&agencyName=CGWB&startdate=${formattedStart}&enddate=${formattedEnd}&download=false&page=0&size=10000`;
+    
+    console.log(`🔄 Fetching data for ${district}...`);
+    
+    // Add timeout for WRIS API
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort();
+      console.log(`⏱️ Request timeout for ${district}`);
+    }, 25000); // 25 second timeout
+    
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeout);
+    
     if (!response.ok) {
       throw new Error(`API request failed with status ${response.status}`);
     }
     const json = await response.json();
+    const rawRecords = json.data?.length || 0;
+    console.log(`📥 Received ${rawRecords} raw records for ${district}`);
 
     if (!json.data || json.data.length === 0) {
       return res
@@ -71,9 +88,11 @@ router.post("/water-levels", async (req, res) => {
     }
 
     const stations = new Map();
+    let validRecords = 0;
     json.data.forEach((s) => {
       const waterLevel = parseFloat(s.dataValue);
       if (isNaN(waterLevel) || waterLevel <= 0) return;
+      validRecords++;
 
       const stationCode = s.stationCode;
       if (!stations.has(stationCode)) {
@@ -102,6 +121,8 @@ router.post("/water-levels", async (req, res) => {
     if (stations.size === 0) {
       return res.status(404).json({ error: "No valid stations found" });
     }
+    
+    console.log(`✅ Processed ${validRecords} valid records from ${stations.size} stations`);
 
     // Sort history for each station
     for (const station of stations.values()) {
@@ -378,7 +399,7 @@ router.post("/water-levels", async (req, res) => {
       })),
     };
 
-    return res.json({
+    const responseData = {
       userLocation: { lat, lon, date },
       nearestStation: {
         stationName: nearestStation.name,
@@ -398,16 +419,24 @@ router.post("/water-levels", async (req, res) => {
       rechargeTrend,
       stressAnalysis,
       plotData,
-    });
+    };
+    
+    return res.json(responseData);
   } catch (err) {
-    console.error(err);
-    res
-      .status(500)
-      .json({
-        error: "Failed to fetch or process groundwater data",
-        detail: err.message,
-        stack: err.stack,
+    console.error("❌ Error:", err.message);
+    
+    // Handle timeout errors
+    if (err.name === 'AbortError') {
+      return res.status(504).json({
+        error: "Request timeout",
+        detail: "The WRIS API took too long to respond. Please try again.",
       });
+    }
+    
+    res.status(500).json({
+      error: "Failed to fetch or process groundwater data",
+      detail: err.message,
+    });
   }
 });
 

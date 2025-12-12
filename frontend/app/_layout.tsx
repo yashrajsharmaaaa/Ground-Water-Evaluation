@@ -1,10 +1,11 @@
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import ChatbotFloatingIcon from '../components/Chatbot';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -12,6 +13,7 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
   const router = useRouter();
+  const pathname = usePathname();
 
   if (!loaded) {
     // Async font loading only occurs in development.
@@ -19,20 +21,25 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen 
-          name="chatbot" 
-          options={{ 
-            title: "JalMitra Chat",
-            presentation: 'modal'
-          }} 
-        />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <ChatbotFloatingIcon onPress={() => router.push('/explore')} style={undefined} />
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen 
+            name="chatbot" 
+            options={{ 
+              presentation: 'modal',
+              headerShown: false,
+              animation: 'slide_from_bottom'
+            }} 
+          />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+        {pathname !== '/chatbot' && (
+          <ChatbotFloatingIcon onPress={() => router.push('/chatbot')} style={undefined} />
+        )}
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

@@ -95,6 +95,12 @@ router.post("/chat", async (req, res) => {
       language,
       district: providedDistrict,
     } = req.body;
+    
+    console.log("\n🤖 === CHAT REQUEST ===");
+    console.log("📝 Message:", message);
+    console.log("📍 Location:", { lat, lon, district: providedDistrict });
+    console.log("🌐 Language:", language);
+    
     if (!message) return res.status(400).json({ error: "Message is required" });
 
     // Precompute district from lat/lon for fallback
@@ -115,6 +121,12 @@ router.post("/chat", async (req, res) => {
     let contextRelevant = false;
     // Analyze intent locally
     const analysis = analyzeIntent(message, providedDistrict, lat, lon, date);
+    console.log("🔍 Intent Analysis:", {
+      needsApiCall: analysis.needsApiCall,
+      dataType: analysis.dataType,
+      inferredDistrict: analysis.inferredDistrict,
+      missingFields: analysis.missingFields
+    });
 
     // Determine finalDistrict: providedDistrict > inferredDistrict > precomputedDistrict
     let finalDistrict =
@@ -173,6 +185,7 @@ router.post("/chat", async (req, res) => {
     // Fetch data if required and context is not relevant
     let apiSummary = null;
     if (analysis.needsApiCall && !contextRelevant) {
+      console.log("📡 Fetching data from API...");
       let endDate = date ? new Date(date) : new Date();
       let startDate;
 
@@ -241,6 +254,7 @@ router.post("/chat", async (req, res) => {
         if (results.error) throw results.error;
 
         apiSummary = results.data;
+        console.log("✅ Data fetched successfully:", results.source);
         apiSummary._rawCount = results.rawCount;
         effectiveContext = JSON.stringify(apiSummary, null, 2);
         req.body.context = effectiveContext;
@@ -272,14 +286,22 @@ router.post("/chat", async (req, res) => {
     // Generate final response
     const genSystem = `
 You are JalMitra 🌊 — a friendly, authoritative groundwater advisor for researchers, planners, and policymakers.
-You must produce a concise, actionable reply that:
-- Uses available context (the JSON in the "Context" block) when relevant.
-- If context was fetched from WRIS, local, or provided context, reference the station or month with the target (highest/lowest) water level, including station name, value, and date or month.
-- If data is sparse or fetch failed, state which fields were missing or the error, and make a best-effort reply using model knowledge.
-- Add short decision-support notes (2-3 bullet actions for researchers/planners).
-- If a district was inferred from the message, mention "inferred district: <name>".
-- If district coordinates were used, mention "using district coordinates for <name>".
-Keep tone professional, slightly warm. Do NOT reveal chain-of-thought. You may include brief bullet reasoning (not internal chain-of-thought).
+
+Format your response clearly:
+• Start with a direct answer to the question
+• Use line breaks between different points
+• Use bullet points (•) for lists
+• Keep paragraphs short (2-3 sentences max)
+• Use emojis sparingly for visual breaks (📊 📍 💧 ⚠️)
+
+Content requirements:
+• Use available context data when relevant
+• Reference specific stations, values, and dates
+• If data is missing, explain what's needed
+• Add 2-3 actionable recommendations
+• Mention inferred districts or coordinates used
+
+Keep tone professional yet warm. Be concise and scannable.
 `;
     const genUser = `
 User message: ${JSON.stringify(analysis.processedMessage)}
@@ -298,12 +320,16 @@ THE LANGUAGE OF THE OUTPUT IS ${language}
 Task: Provide a helpful answer to the user. If you could not fetch live data because some fields were missing or API failed, say that you made a best-effort reply and list what you would need to fetch live data (district/lat/lon/date). If you used an inferred district, include "inferred district: <name>". If you used district coordinates, include "using district coordinates for <name>".
 `;
 
+    let finalText;
     let genResp;
+    
+    console.log("🧠 Calling AI model...");
+    
     try {
       genResp = await axios.post(
         "https://openrouter.ai/api/v1/chat/completions",
         {
-          model: "deepseek/deepseek-chat-v3.1:free",
+          model: "nex-agi/deepseek-v3.1-nex-n1:free",
           messages: [
             { role: "system", content: genSystem },
             { role: "user", content: genUser },
@@ -317,18 +343,40 @@ Task: Provide a helpful answer to the user. If you could not fetch live data bec
           timeout: 15_000,
         }
       );
+      let rawText = getLLMContent(genResp) || "Sorry — I couldn't produce a response right now.";
+      // Format the response for better readability
+      finalText = rawText
+        .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markdown
+        .replace(/\n{3,}/g, '\n\n') // Max 2 line breaks
+        .trim();
+      console.log("✅ AI response generated");
     } catch (err) {
-      console.error("LLM generation error:", err);
-      return res.status(500).json({
-        error: "Failed to generate response",
-        detail: err.message || String(err),
-      });
+      console.error("❌ LLM generation error:", err.response?.status || err.message);
+      console.log("🔄 Using fallback response...");
+      
+      // Fallback response when API fails
+      if (apiSummary && !apiSummary.error) {
+        finalText = `Based on the available data for ${finalDistrict || 'the requested location'}:\n\n`;
+        if (apiSummary.currentLevel) {
+          finalText += `📊 Current water level: ${apiSummary.currentLevel}m\n`;
+        }
+        if (apiSummary.stationName) {
+          finalText += `🔬 Monitoring station: ${apiSummary.stationName}\n`;
+        }
+        if (apiSummary.trend) {
+          finalText += `📈 Trend: ${apiSummary.trend}\n`;
+        }
+        finalText += `\n💡 For detailed analysis, please try again in a moment.`;
+      } else {
+        finalText = `I'm currently experiencing high demand. Here's what I can tell you:\n\n`;
+        finalText += `📍 Location: ${finalDistrict || 'Unknown'}\n`;
+        finalText += `\nPlease try your question again in a moment, or use the Dashboard tab for detailed water level data.`;
+      }
     }
 
-    const finalText =
-      getLLMContent(genResp) ||
-      "Sorry — I couldn't produce a response right now.";
-
+    console.log("✅ Sending response to client");
+    console.log("=== CHAT REQUEST COMPLETE ===\n");
+    
     return res.json({
       response: finalText,
       meta: {

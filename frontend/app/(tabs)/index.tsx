@@ -1,17 +1,23 @@
+// @ts-nocheck
 import * as Location from "expo-location";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  Animated,
+  StatusBar,
 } from "react-native";
 import { BarChart, LineChart } from "react-native-chart-kit";
 import { Card, Chip, Searchbar } from "react-native-paper";
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
@@ -21,11 +27,13 @@ export default function DashboardScreen() {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [groundwaterData, setGroundwaterData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
+  const fadeAnim = useState(new Animated.Value(0))[0];
 
   // Backend API URL (replace with your ngrok URL)
-  const API_BASE_URL = "https://1a2201527830.ngrok-free.app"; // Replace with actual ngrok URL
+  const API_BASE_URL = "https://makhi-enuretic-sherrie.ngrok-free.dev";
 
   // Hardcoded popular places with coordinates
   const POPULAR_PLACES = [
@@ -351,16 +359,64 @@ export default function DashboardScreen() {
     },
   };
 
+  // Handle pull to refresh
+  const onRefresh = async () => {
+    setRefreshing(true);
+    if (currentLocation) {
+      await fetchGroundwaterData(
+        currentLocation.lat,
+        currentLocation.lon,
+        locationName
+      );
+    }
+    setRefreshing(false);
+  };
+
+  // Loading Skeleton Component
+  const LoadingSkeleton = () => (
+    <View style={styles.skeletonContainer}>
+      {[1, 2, 3].map((item) => (
+        <View key={item} style={styles.skeletonCard}>
+          <View style={styles.skeletonTitle} />
+          <View style={styles.skeletonLine} />
+          <View style={[styles.skeletonLine, { width: '70%' }]} />
+        </View>
+      ))}
+    </View>
+  );
+
   // Calculate chart width based on screen width with proper padding
   const chartWidth = screenWidth - 48; // Account for card padding and margins
   const chartHeight = 200; // Fixed height for consistency
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Groundwater Dashboard</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#007AFF']}
+            tintColor="#007AFF"
+          />
+        }
+      >
+      {/* Header Section */}
+      <View style={styles.headerSection}>
+        <View>
+          <Text style={styles.title}>💧 Groundwater Dashboard</Text>
+          <Text style={styles.subtitle}>Real-time monitoring from 5,260 DWLR stations</Text>
+        </View>
+        <TouchableOpacity style={styles.infoButton}>
+          <Ionicons name="information-circle-outline" size={24} color="#007AFF" />
+        </TouchableOpacity>
+      </View>
 
       {/* Search Section */}
-      <Card style={styles.card}>
+      <Card style={styles.card} elevation={2}>
         <Card.Content>
           <Searchbar
             placeholder="Search places in Rajasthan (e.g., Jaipur, Udaipur, Jodhpur)"
@@ -419,18 +475,29 @@ export default function DashboardScreen() {
       </Card>
 
       {/* Loading Indicator */}
-      {loading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.loadingText}>Fetching groundwater data...</Text>
-        </View>
-      )}
+      {loading && !refreshing && <LoadingSkeleton />}
 
       {/* Error Display */}
-      {error && (
-        <Card style={[styles.card, styles.errorCard]}>
+      {error && !loading && (
+        <Card style={[styles.card, styles.errorCard]} elevation={1}>
           <Card.Content>
-            <Text style={styles.errorText}>⚠️ {error}</Text>
+            <View style={styles.errorContainer}>
+              <Ionicons name="alert-circle" size={48} color="#DC2626" />
+              <Text style={styles.errorTitle}>Connection Error</Text>
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity 
+                style={styles.retryButton}
+                onPress={() => {
+                  setError(null);
+                  if (currentLocation) {
+                    fetchGroundwaterData(currentLocation.lat, currentLocation.lon, locationName);
+                  }
+                }}
+              >
+                <Ionicons name="refresh" size={20} color="#FFF" />
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
           </Card.Content>
         </Card>
       )}
@@ -613,21 +680,42 @@ export default function DashboardScreen() {
         </>
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
   container: {
     flex: 1,
     backgroundColor: "#F9FAFB",
+  },
+  contentContainer: {
     padding: 16,
+    paddingTop: 12,
+  },
+  headerSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 4,
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "bold",
-    marginBottom: 20,
     color: "#1f2937",
-    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 4,
+  },
+  infoButton: {
+    padding: 8,
   },
   card: {
     backgroundColor: "#fff",
@@ -643,6 +731,54 @@ const styles = StyleSheet.create({
     backgroundColor: "#fef2f2",
     borderColor: "#fecaca",
     borderWidth: 1,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#DC2626',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 16,
+    gap: 8,
+  },
+  retryButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  skeletonContainer: {
+    padding: 16,
+  },
+  skeletonCard: {
+    backgroundColor: '#FFF',
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  skeletonTitle: {
+    height: 24,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    marginBottom: 12,
+    width: '60%',
+  },
+  skeletonLine: {
+    height: 16,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 4,
+    marginBottom: 8,
   },
   searchBar: {
     marginBottom: 12,

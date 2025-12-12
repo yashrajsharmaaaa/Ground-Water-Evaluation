@@ -1,12 +1,18 @@
 import { RAJASTHAN_DISTRICTS } from "../district.js";
-import {cache} from "../cache.js"
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371; // Earth's radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 export function getDistrict(lat, lon) {
-  const cacheKey = `${lat},${lon}`;
-  const cachedDistrict = cache.get(cacheKey);
-  if (cachedDistrict) return cachedDistrict;
-
-  let nearestDistrict = RAJASTHAN_DISTRICTS[0].name; // Default to first district (Ajmer)
+  let nearestDistrict = RAJASTHAN_DISTRICTS[0].name;
   let minDistance = Infinity;
 
   for (const district of RAJASTHAN_DISTRICTS) {
@@ -17,26 +23,17 @@ export function getDistrict(lat, lon) {
     }
   }
 
-  cache.set(cacheKey, nearestDistrict);
   return nearestDistrict;
 }
 
 export function getCoordsFromDistrict(district) {
-  const cacheKey = `coords_${district?.toLowerCase()}`;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
-
   const d = RAJASTHAN_DISTRICTS.find(
     (d) => d.name.toLowerCase() === district?.toLowerCase()
   );
-  const coords = d ? { lat: d.lat, lon: d.lon } : null;
-  if (coords) cache.set(cacheKey, coords);
-  return coords;
+  return d ? { lat: d.lat, lon: d.lon } : null;
 }
 
 export function getDistrictFromCoords(lat, lon) {
-  const cacheKey = `district_${lat}_${lon}`;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
-
   let nearest = RAJASTHAN_DISTRICTS[0];
   let minD = Infinity;
   for (const d of RAJASTHAN_DISTRICTS) {
@@ -46,6 +43,5 @@ export function getDistrictFromCoords(lat, lon) {
       nearest = d;
     }
   }
-  cache.set(cacheKey, nearest.name);
   return nearest.name;
 }

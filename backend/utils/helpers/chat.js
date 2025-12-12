@@ -1,4 +1,13 @@
-import { cache } from "../cache.js";
+function haversine(lat1, lon1, lat2, lon2) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371; // Earth's radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 export function summarizeLocalForChat(
   localData = {},
@@ -8,10 +17,6 @@ export function summarizeLocalForChat(
   isLowest = false,
   year = null
 ) {
-  const cacheKey = `summary_local_${district}_${lat || ""}_${
-    lon || ""
-  }_${isLowest}_${year || ""}`;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   const summary = {
     source: "local",
@@ -95,14 +100,11 @@ export function summarizeLocalForChat(
       }
     }
   }
-  cache.set(cacheKey, summary);
   return summary;
 }
 
 
 export function summarizeContextForChat(context, year, isLowest = false) {
-  const cacheKey = `summary_context_${year}_${isLowest}`;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   const summary = {
     source: "context",
@@ -160,7 +162,6 @@ export function summarizeContextForChat(context, year, isLowest = false) {
       } water level from context`,
     };
   }
-  cache.set(cacheKey, summary);
   return summary;
 }
 
@@ -173,10 +174,6 @@ function summarizeWrisForChat(
   isLowest = false,
   year = null
 ) {
-  const cacheKey = `summary_wris_${district}_${lat || ""}_${
-    lon || ""
-  }_${isLowest}_${year || ""}`;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   const summary = {
     source: "wris",
@@ -282,6 +279,5 @@ function summarizeWrisForChat(
       summary.totalStationsWithHistory = arr.length;
     }
   }
-  cache.set(cacheKey, summary);
   return summary;
 }

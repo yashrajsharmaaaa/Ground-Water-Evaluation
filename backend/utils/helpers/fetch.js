@@ -1,4 +1,11 @@
 import fetch from "node-fetch";
+import axios from "axios";
+
+function formatDate(date) {
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().split("T")[0];
+}
 
 export async function fetchGroundwaterData(
   { district, start, end },
@@ -10,8 +17,6 @@ export async function fetchGroundwaterData(
   if (!formattedStart || !formattedEnd) {
     throw new Error("Invalid start or end date for WRIS fetch");
   }
-  const cacheKey = `wris_${district}_${formattedStart}_${formattedEnd}`;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   const url = `https://indiawris.gov.in/Dataset/Ground%20Water%20Level?stateName=Rajasthan&districtName=${encodeURIComponent(
     district
@@ -31,7 +36,6 @@ export async function fetchGroundwaterData(
       }
       if (!r.ok) throw new Error(`WRIS API failed (${r.status})`);
       const data = await r.json();
-      cache.set(cacheKey, data);
       return data;
     } catch (err) {
       if (i === retries - 1) throw err;

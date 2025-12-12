@@ -1,5 +1,9 @@
+import { RAJASTHAN_DISTRICTS } from "../district.js";
+
 export function analyzeIntent(message, providedDistrict, lat, lon, date) {
-  const lowerMessage = message.toLowerCase();
+  // Ensure message is a string
+  const messageStr = String(message || "");
+  const lowerMessage = messageStr.toLowerCase();
   const needsApiCall =
     lowerMessage.includes("highest") ||
     lowerMessage.includes("lowest") ||
@@ -36,6 +40,6 @@ export function analyzeIntent(message, providedDistrict, lat, lon, date) {
     requestedRange,
     inferredDistrict,
     isLowest,
-    processedMessage: message,
+    processedMessage: messageStr,
   };
 }
