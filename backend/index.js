@@ -113,7 +113,12 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
+
+// Set server timeout to 2 minutes for slow WRIS API
+server.timeout = 120000; // 120 seconds
+server.keepAliveTimeout = 120000;
+server.headersTimeout = 120000;

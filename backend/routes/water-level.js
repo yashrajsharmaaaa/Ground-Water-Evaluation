@@ -86,7 +86,7 @@ router.post("/water-levels", async (req, res) => {
     const timeout = setTimeout(() => {
       controller.abort();
       console.log(`⏱️ Request timeout for ${district}`);
-    }, 25000); // 25 second timeout
+    }, 90000); // 90 second timeout for slow WRIS API
     
     const response = await fetch(url, {
       method: "POST",
