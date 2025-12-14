@@ -36,8 +36,8 @@ const ChatbotScreen = ({ navigation, groundwaterData, currentLocation }) => {
 
   const scrollViewRef = useRef(null);
 
-  // Backend API URL - Deployed on Vercel
-  const API_BASE_URL = "https://ground-water-evaluation.vercel.app";
+  // Backend API URL - Deployed on Render
+  const API_BASE_URL = "https://jalmitra-backend.onrender.com";
 
   const scrollToBottom = () => {
     setTimeout(() => {

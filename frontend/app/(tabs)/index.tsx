@@ -32,8 +32,8 @@ export default function DashboardScreen() {
   const [suggestions, setSuggestions] = useState([]);
   const fadeAnim = useState(new Animated.Value(0))[0];
 
-  // Backend API URL - Deployed on Vercel
-  const API_BASE_URL = "https://ground-water-evaluation.vercel.app";
+  // Backend API URL - Deployed on Render
+  const API_BASE_URL = "https://jalmitra-backend.onrender.com";
 
   // Popular places across 12 water-stressed states
   const POPULAR_PLACES = [

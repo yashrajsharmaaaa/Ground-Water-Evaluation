@@ -32,8 +32,8 @@ export default function ExploreScreen() {
   const [viewMode, setViewMode] = useState('map'); // 'map' or 'list'
   const [selectedStation, setSelectedStation] = useState(null);
 
-  // Backend API URL - Deployed on Vercel
-  const API_BASE_URL = "https://ground-water-evaluation.vercel.app";
+  // Backend API URL - Deployed on Render
+  const API_BASE_URL = "https://jalmitra-backend.onrender.com";
 
   // Sample stations across 12 water-stressed states
   const SAMPLE_STATIONS = [

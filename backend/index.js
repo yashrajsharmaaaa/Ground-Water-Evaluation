@@ -16,6 +16,9 @@ dotenv.config({ path: [".env.local", ".env"] });
 
 const app = express();
 
+// Trust proxy for Render deployment
+app.set('trust proxy', 1);
+
 // MongoDB connection with optimized settings
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/jalmitra";
 mongoose.connect(MONGODB_URI, {
