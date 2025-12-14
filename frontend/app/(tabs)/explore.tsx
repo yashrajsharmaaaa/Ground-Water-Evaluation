@@ -32,8 +32,8 @@ export default function ExploreScreen() {
   const [viewMode, setViewMode] = useState('map'); // 'map' or 'list'
   const [selectedStation, setSelectedStation] = useState(null);
 
-  // Backend API URL - Using local network IP (same as chatbot)
-  const API_BASE_URL = "http://192.168.0.193:3000";
+  // Backend API URL - Deployed on Vercel
+  const API_BASE_URL = "https://ground-water-evaluation.vercel.app";
 
   // Sample stations across 12 water-stressed states
   const SAMPLE_STATIONS = [

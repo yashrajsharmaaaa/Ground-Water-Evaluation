@@ -36,7 +36,8 @@ const ChatbotScreen = ({ navigation, groundwaterData, currentLocation }) => {
 
   const scrollViewRef = useRef(null);
 
-  const API_BASE_URL = "http://192.168.0.193:3000";
+  // Backend API URL - Deployed on Vercel
+  const API_BASE_URL = "https://ground-water-evaluation.vercel.app";
 
   const scrollToBottom = () => {
     setTimeout(() => {
