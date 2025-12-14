@@ -9,9 +9,14 @@ function computeLinearRegression(x, y) {
   const n = x.length;
   const meanX = x.reduce((a, b) => a + b, 0) / n;
   const meanY = y.reduce((a, b) => a + b, 0) / n;
-  const slope =
-    x.reduce((sum, xi, i) => sum + (xi - meanX) * (y[i] - meanY), 0) /
-    x.reduce((sum, xi) => sum + (xi - meanX) ** 2, 0);
+  const denominator = x.reduce((sum, xi) => sum + (xi - meanX) ** 2, 0);
+  
+  // Handle division by zero (all x values are the same)
+  if (denominator === 0) {
+    return { slope: 0, intercept: meanY, fitted: y };
+  }
+  
+  const slope = x.reduce((sum, xi, i) => sum + (xi - meanX) * (y[i] - meanY), 0) / denominator;
   const intercept = meanY - slope * meanX;
   return { slope, intercept, fitted: x.map((xi) => slope * xi + intercept) };
 }
@@ -88,18 +93,21 @@ router.post("/water-levels", async (req, res) => {
       console.log(`⏱️ Request timeout for ${district}`);
     }, 90000); // 90 second timeout for slow WRIS API
     
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: controller.signal,
-    });
-    
-    clearTimeout(timeout);
-    
-    if (!response.ok) {
-      throw new Error(`API request failed with status ${response.status}`);
+    let response, json;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+      json = await response.json();
+    } finally {
+      clearTimeout(timeout); // Always clear timeout
     }
-    const json = await response.json();
     const rawRecords = json.data?.length || 0;
     console.log(`📥 Received ${rawRecords} raw records for ${district}`);
 
@@ -365,8 +373,8 @@ router.post("/water-levels", async (req, res) => {
       }
 
       stressAnalysis = {
-        trend: overallSlope > 0 ? "declining" : "rising",
-        annualDeclineRate: overallSlope.toFixed(2),
+        trend: overallSlope > 0 ? "rising" : "declining",
+        annualDeclineRate: Math.abs(overallSlope).toFixed(2),
         preMonsoonDeclineRate: preSlope ? preSlope.toFixed(2) : null,
         postMonsoonDeclineRate: postSlope ? postSlope.toFixed(2) : null,
         category,
