@@ -33,6 +33,38 @@ export default function RootLayout() {
               animation: 'slide_from_bottom'
             }} 
           />
+          <Stack.Screen 
+            name="login" 
+            options={{ 
+              presentation: 'modal',
+              headerShown: false,
+              animation: 'slide_from_bottom'
+            }} 
+          />
+          <Stack.Screen 
+            name="register" 
+            options={{ 
+              presentation: 'modal',
+              headerShown: false,
+              animation: 'slide_from_bottom'
+            }} 
+          />
+          <Stack.Screen 
+            name="edit-profile" 
+            options={{ 
+              presentation: 'modal',
+              headerShown: false,
+              animation: 'slide_from_right'
+            }} 
+          />
+          <Stack.Screen 
+            name="settings" 
+            options={{ 
+              presentation: 'modal',
+              headerShown: false,
+              animation: 'slide_from_right'
+            }} 
+          />
           <Stack.Screen name="+not-found" />
         </Stack>
         {pathname !== '/chatbot' && (

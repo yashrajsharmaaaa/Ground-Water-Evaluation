@@ -8,7 +8,7 @@ function formatDate(date) {
 }
 
 export async function fetchGroundwaterData(
-  { district, start, end },
+  { district, state = "Rajasthan", start, end }, // Added state parameter with default
   retries = 3,
   delay = 1000
 ) {
@@ -18,7 +18,9 @@ export async function fetchGroundwaterData(
     throw new Error("Invalid start or end date for WRIS fetch");
   }
 
-  const url = `https://indiawris.gov.in/Dataset/Ground%20Water%20Level?stateName=Rajasthan&districtName=${encodeURIComponent(
+  const url = `https://indiawris.gov.in/Dataset/Ground%20Water%20Level?stateName=${encodeURIComponent(
+    state
+  )}&districtName=${encodeURIComponent(
     district
   )}&agencyName=CGWB&startdate=${formattedStart}&enddate=${formattedEnd}&download=false&page=0&size=1000`;
 
@@ -50,9 +52,12 @@ export async function fetchLocalWaterLevel(
   delay = 1000
 ) {
   try {
-    const url = `${
-      process.env.BASE_URL || "https://3b891c879c8a.ngrok-free.app/"
-    }/api/water-levels`;
+    // Use environment variable or default to localhost in development
+    const baseUrl = process.env.BASE_URL || 
+      (process.env.NODE_ENV === 'production' 
+        ? 'https://your-production-url.com' 
+        : 'http://localhost:3000');
+    const url = `${baseUrl}/api/water-levels`;
     for (let i = 0; i < retries; i++) {
       try {
         const resp = await axios.post(

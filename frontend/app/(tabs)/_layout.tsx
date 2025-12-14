@@ -10,7 +10,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#2672FF",
+        tabBarActiveTintColor: "#007AFF",
         tabBarStyle: { backgroundColor: "#fff" },
       }}
     >
@@ -26,6 +26,13 @@ export default function TabLayout() {
         options={{
           title: "Explore",
           tabBarIcon: ({ color, size }) => <Ionicons name="map" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          tabBarIcon: ({ color, size}) => <Ionicons name="person" size={size} color={color} />,
         }}
       />
     </Tabs>);

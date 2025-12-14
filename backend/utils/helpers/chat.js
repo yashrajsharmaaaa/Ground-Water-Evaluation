@@ -1,13 +1,5 @@
-function haversine(lat1, lon1, lat2, lon2) {
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const R = 6371; // Earth's radius in km
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+import { haversine } from "../geo.js";
+import { getDistrictFromCoords } from "./geo.js";
 
 export function summarizeLocalForChat(
   localData = {},
@@ -257,7 +249,7 @@ function summarizeWrisForChat(
       } else {
         arr.sort((a, b) => {
           const aLatest = a.history[a.history.length - 1]?.value ?? -Infinity;
-          const bLatest = b.history[a.history.length - 1]?.value ?? -Infinity;
+          const bLatest = b.history[b.history.length - 1]?.value ?? -Infinity; // FIXED: was 'a', now 'b'
           return isLowest ? aLatest - bLatest : bLatest - aLatest;
         });
         const target = arr[0];

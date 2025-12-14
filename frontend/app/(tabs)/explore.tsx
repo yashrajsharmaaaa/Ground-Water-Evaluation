@@ -14,16 +14,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from 'react-native-paper';
-import MapView, { Marker, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Callout } from 'react-native-maps';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function ExploreScreen() {
+  // Center on India (All India view)
   const [region, setRegion] = useState({
-    latitude: 26.9124,
-    longitude: 75.7873,
-    latitudeDelta: 5,
-    longitudeDelta: 5,
+    latitude: 22.5, // Center of India
+    longitude: 78.5,
+    latitudeDelta: 20, // Zoom out to show all of India
+    longitudeDelta: 20,
   });
   const [currentLocation, setCurrentLocation] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -31,15 +32,34 @@ export default function ExploreScreen() {
   const [viewMode, setViewMode] = useState('map'); // 'map' or 'list'
   const [selectedStation, setSelectedStation] = useState(null);
 
-  const API_BASE_URL = "https://makhi-enuretic-sherrie.ngrok-free.dev";
+  // Backend API URL - Using local network IP (same as chatbot)
+  const API_BASE_URL = "http://192.168.0.193:3000";
 
-  // Sample stations for Rajasthan (you can fetch these from your backend)
+  // Sample stations across 12 water-stressed states
   const SAMPLE_STATIONS = [
-    { id: 1, name: 'Jaipur Station', lat: 26.9124, lon: 75.7873, level: 45.2, status: 'safe' },
-    { id: 2, name: 'Jodhpur Station', lat: 26.2389, lon: 73.0243, level: 32.5, status: 'critical' },
-    { id: 3, name: 'Udaipur Station', lat: 24.5854, lon: 73.7125, level: 52.8, status: 'safe' },
-    { id: 4, name: 'Bikaner Station', lat: 28.0229, lon: 73.3119, level: 28.3, status: 'over-exploited' },
-    { id: 5, name: 'Ajmer Station', lat: 26.4499, lon: 74.6399, level: 38.7, status: 'semi-critical' },
+    // Rajasthan
+    { id: 1, name: 'Jaipur Station', state: 'Rajasthan', lat: 26.9124, lon: 75.7873, level: 34.1, status: 'safe' },
+    { id: 2, name: 'Jodhpur Station', state: 'Rajasthan', lat: 26.2389, lon: 73.0243, level: 32.5, status: 'critical' },
+    // Gujarat
+    { id: 3, name: 'Ahmedabad Station', state: 'Gujarat', lat: 23.03, lon: 72.58, level: 70.5, status: 'over-exploited' },
+    { id: 4, name: 'Surat Station', state: 'Gujarat', lat: 21.17, lon: 72.83, level: 45.2, status: 'semi-critical' },
+    // Maharashtra
+    { id: 5, name: 'Mumbai Station', state: 'Maharashtra', lat: 19.07, lon: 72.87, level: 2.95, status: 'safe' },
+    { id: 6, name: 'Pune Station', state: 'Maharashtra', lat: 18.52, lon: 73.85, level: 4.60, status: 'safe' },
+    // Uttar Pradesh
+    { id: 7, name: 'Lucknow Station', state: 'Uttar Pradesh', lat: 26.85, lon: 80.95, level: 39.3, status: 'semi-critical' },
+    // Madhya Pradesh
+    { id: 8, name: 'Bhopal Station', state: 'Madhya Pradesh', lat: 23.26, lon: 77.41, level: 1.80, status: 'safe' },
+    // Tamil Nadu
+    { id: 9, name: 'Chennai Station', state: 'Tamil Nadu', lat: 13.08, lon: 80.27, level: 1.87, status: 'critical' },
+    // Telangana
+    { id: 10, name: 'Hyderabad Station', state: 'Telangana', lat: 17.39, lon: 78.49, level: 11.0, status: 'semi-critical' },
+    // Andhra Pradesh
+    { id: 11, name: 'Visakhapatnam Station', state: 'Andhra Pradesh', lat: 17.69, lon: 83.21, level: 10.7, status: 'safe' },
+    // Punjab
+    { id: 12, name: 'Ludhiana Station', state: 'Punjab', lat: 30.90, lon: 75.85, level: 33.6, status: 'over-exploited' },
+    // Haryana
+    { id: 13, name: 'Gurugram Station', state: 'Haryana', lat: 28.46, lon: 77.03, level: 21.3, status: 'critical' },
   ];
 
   useEffect(() => {
@@ -116,6 +136,7 @@ export default function ExploreScreen() {
           <View style={styles.stationHeader}>
             <View style={styles.stationInfo}>
               <Text style={styles.stationName}>{item.name}</Text>
+              <Text style={styles.stationState}>🏛️ {item.state}</Text>
               <Text style={styles.stationCoords}>
                 📍 {item.lat.toFixed(4)}, {item.lon.toFixed(4)}
               </Text>
@@ -138,8 +159,8 @@ export default function ExploreScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>🗺️ Explore Stations</Text>
-          <Text style={styles.headerSubtitle}>Groundwater monitoring locations</Text>
+          <Text style={styles.headerTitle}>🗺️ All India Coverage</Text>
+          <Text style={styles.headerSubtitle}>414 Districts • 12 Water-Stressed States</Text>
         </View>
         <TouchableOpacity 
           onPress={() => setViewMode(viewMode === 'map' ? 'list' : 'map')} 
@@ -164,7 +185,6 @@ export default function ExploreScreen() {
       ) : viewMode === 'map' ? (
         <>
           <MapView
-            provider={PROVIDER_GOOGLE}
             style={styles.map}
             region={region}
             onRegionChangeComplete={setRegion}
@@ -413,6 +433,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#1F2937',
+    marginBottom: 2,
+  },
+  stationState: {
+    fontSize: 13,
+    color: '#16A34A',
+    fontWeight: '500',
     marginBottom: 4,
   },
   stationCoords: {

@@ -1,0 +1,13 @@
+[
+  { "name": "Central Delhi", "lat": 28.65, "lon": 77.22, "state": "Delhi" },
+  { "name": "East Delhi", "lat": 28.65, "lon": 77.30, "state": "Delhi" },
+  { "name": "New Delhi", "lat": 28.61, "lon": 77.21, "state": "Delhi" },
+  { "name": "North Delhi", "lat": 28.73, "lon": 77.15, "state": "Delhi" },
+  { "name": "North East Delhi", "lat": 28.71, "lon": 77.28, "state": "Delhi" },
+  { "name": "North West Delhi", "lat": 28.72, "lon": 77.10, "state": "Delhi" },
+  { "name": "Shahdara", "lat": 28.67, "lon": 77.29, "state": "Delhi" },
+  { "name": "South Delhi", "lat": 28.53, "lon": 77.24, "state": "Delhi" },
+  { "name": "South East Delhi", "lat": 28.56, "lon": 77.28, "state": "Delhi" },
+  { "name": "South West Delhi", "lat": 28.60, "lon": 77.04, "state": "Delhi" },
+  { "name": "West Delhi", "lat": 28.66, "lon": 77.10, "state": "Delhi" }
+]

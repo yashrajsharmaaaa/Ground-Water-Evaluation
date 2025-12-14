@@ -1,18 +1,9 @@
 import { Router } from "express";
 import fetch from "node-fetch";
 import { getDistrict } from "../utils/helpers/geo.js";
+import { wrisCache, generateCacheKey } from "../utils/cache.js";
+import { haversine } from "../utils/geo.js";
 const router = Router();
-
-function haversine(lat1, lon1, lat2, lon2) {
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const R = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 function computeLinearRegression(x, y) {
   const n = x.length;
@@ -29,23 +20,52 @@ router.post("/water-levels", async (req, res) => {
   try {
     const { lat, lon, date } = req.body;
 
+    // Validate required fields
     if (!lat || !lon || !date) {
       return res.status(400).json({ error: "lat, lon, and date are required" });
     }
 
+    // Validate numeric values
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lon);
+    
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return res.status(400).json({ error: "lat and lon must be valid numbers" });
+    }
+
+    // Validate coordinate ranges
+    if (latitude < -90 || latitude > 90) {
+      return res.status(400).json({ error: "lat must be between -90 and 90" });
+    }
+    
+    if (longitude < -180 || longitude > 180) {
+      return res.status(400).json({ error: "lon must be between -180 and 180" });
+    }
+
+    // Validate date
     if (isNaN(Date.parse(date))) {
       return res
         .status(400)
         .json({ error: "Invalid date format. Use YYYY-MM-DD" });
     }
 
-    const district = await getDistrict(lat, lon);
+    // Check cache first
+    const cacheKey = generateCacheKey('water-level', { lat: latitude, lon: longitude, date });
+    const cachedData = wrisCache.get(cacheKey);
+    if (cachedData) {
+      console.log(`✅ Cache hit for ${cacheKey}`);
+      return res.json({ ...cachedData, cached: true });
+    }
+
+    const districtInfo = await getDistrict(latitude, longitude);
     
-    if (district === "Unknown") {
+    if (!districtInfo || districtInfo.name === "Unknown") {
       return res
         .status(400)
         .json({ error: "Unable to determine district from coordinates" });
     }
+
+    const { name: district, state } = districtInfo;
 
     const endDate = new Date(date);
     const startDate = new Date(endDate);
@@ -53,11 +73,13 @@ router.post("/water-levels", async (req, res) => {
     const formattedStart = startDate.toISOString().split("T")[0];
     const formattedEnd = endDate.toISOString().split("T")[0];
 
-    const url = `https://indiawris.gov.in/Dataset/Ground%20Water%20Level?stateName=Rajasthan&districtName=${encodeURIComponent(
+    const url = `https://indiawris.gov.in/Dataset/Ground%20Water%20Level?stateName=${encodeURIComponent(
+      state
+    )}&districtName=${encodeURIComponent(
       district
     )}&agencyName=CGWB&startdate=${formattedStart}&enddate=${formattedEnd}&download=false&page=0&size=10000`;
     
-    console.log(`🔄 Fetching data for ${district}...`);
+    console.log(`🔄 Fetching data for ${district}, ${state}...`);
     
     // Add timeout for WRIS API
     const controller = new AbortController();
@@ -89,26 +111,41 @@ router.post("/water-levels", async (req, res) => {
 
     const stations = new Map();
     let validRecords = 0;
+    let skippedRecords = { invalidWaterLevel: 0, invalidCoords: 0 };
+    
     json.data.forEach((s) => {
       const waterLevel = parseFloat(s.dataValue);
-      if (isNaN(waterLevel) || waterLevel <= 0) return;
+      // Allow negative water levels (below ground reference) and zero
+      if (isNaN(waterLevel)) {
+        skippedRecords.invalidWaterLevel++;
+        return;
+      }
+      
+      // Validate station coordinates
+      const stationLat = parseFloat(s.latitude);
+      const stationLon = parseFloat(s.longitude);
+      if (isNaN(stationLat) || isNaN(stationLon)) {
+        skippedRecords.invalidCoords++;
+        return;
+      }
+      
       validRecords++;
 
       const stationCode = s.stationCode;
       if (!stations.has(stationCode)) {
         stations.set(stationCode, {
           name: s.stationName,
-          latitude: parseFloat(s.latitude),
-          longitude: parseFloat(s.longitude),
+          latitude: stationLat,
+          longitude: stationLon,
           wellType: s.wellType || "Unknown",
           wellDepth: s.wellDepth ? parseFloat(s.wellDepth) : null,
           wellAquiferType: s.wellAquiferType || "Unknown",
           history: [],
           distance: haversine(
-            lat,
-            lon,
-            parseFloat(s.latitude),
-            parseFloat(s.longitude)
+            latitude, // FIXED: Use validated latitude
+            longitude, // FIXED: Use validated longitude
+            stationLat,
+            stationLon
           ),
         });
       }
@@ -119,10 +156,18 @@ router.post("/water-levels", async (req, res) => {
     });
 
     if (stations.size === 0) {
-      return res.status(404).json({ error: "No valid stations found" });
+      console.log(`❌ No valid stations found. Skipped: ${skippedRecords.invalidWaterLevel} invalid water levels, ${skippedRecords.invalidCoords} invalid coordinates`);
+      return res.status(404).json({ 
+        error: "No valid stations found",
+        debug: {
+          rawRecords,
+          skippedInvalidWaterLevel: skippedRecords.invalidWaterLevel,
+          skippedInvalidCoords: skippedRecords.invalidCoords
+        }
+      });
     }
     
-    console.log(`✅ Processed ${validRecords} valid records from ${stations.size} stations`);
+    console.log(`✅ Processed ${validRecords} valid records from ${stations.size} stations (Skipped: ${skippedRecords.invalidWaterLevel + skippedRecords.invalidCoords})`);
 
     // Sort history for each station
     for (const station of stations.values()) {
@@ -385,6 +430,7 @@ router.post("/water-levels", async (req, res) => {
         date: h.date,
         waterLevel: h.waterLevel.toFixed(2),
       })),
+      trendLine: fittedWaterLevels, // Linear regression trend line for plotting
       monthlyAverages,
       yearlySummary,
       rechargePattern: rechargePattern.map((r) => ({
@@ -400,7 +446,7 @@ router.post("/water-levels", async (req, res) => {
     };
 
     const responseData = {
-      userLocation: { lat, lon, date },
+      userLocation: { lat: latitude, lon: longitude, date },
       nearestStation: {
         stationName: nearestStation.name,
         latitude: nearestStation.latitude,
@@ -420,6 +466,10 @@ router.post("/water-levels", async (req, res) => {
       stressAnalysis,
       plotData,
     };
+    
+    // Cache the response
+    wrisCache.set(cacheKey, responseData);
+    console.log(`💾 Cached response for ${cacheKey}`);
     
     return res.json(responseData);
   } catch (err) {

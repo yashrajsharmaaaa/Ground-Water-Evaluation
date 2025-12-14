@@ -1,42 +1,57 @@
-import { RAJASTHAN_DISTRICTS } from "../district.js";
+import { ALL_DISTRICTS, STATS } from "../../data/districts/index.js";
+import { haversine } from "../geo.js";
 
-function haversine(lat1, lon1, lat2, lon2) {
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const R = 6371; // Earth's radius in km
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+// Log on startup
+console.log(`🌍 District database loaded: ${STATS.totalDistricts} districts across ${STATS.totalStates} water-stressed states`);
 
+/**
+ * Find nearest district from coordinates
+ * @param {number} lat - Latitude
+ * @param {number} lon - Longitude
+ * @returns {Object} District info with name and state
+ */
 export function getDistrict(lat, lon) {
-  let nearestDistrict = RAJASTHAN_DISTRICTS[0].name;
+  let nearestDistrict = ALL_DISTRICTS[0];
   let minDistance = Infinity;
 
-  for (const district of RAJASTHAN_DISTRICTS) {
+  for (const district of ALL_DISTRICTS) {
     const distance = haversine(lat, lon, district.lat, district.lon);
     if (distance < minDistance) {
       minDistance = distance;
-      nearestDistrict = district.name;
+      nearestDistrict = district;
     }
   }
 
-  return nearestDistrict;
+  // Return both district name and state
+  return {
+    name: nearestDistrict.name,
+    state: nearestDistrict.state,
+    distance: minDistance.toFixed(2) // Distance in km
+  };
 }
 
-export function getCoordsFromDistrict(district) {
-  const d = RAJASTHAN_DISTRICTS.find(
-    (d) => d.name.toLowerCase() === district?.toLowerCase()
+/**
+ * Get coordinates from district name
+ * @param {string} districtName - District name
+ * @returns {Object|null} Coordinates or null
+ */
+export function getCoordsFromDistrict(districtName) {
+  const d = ALL_DISTRICTS.find(
+    (d) => d.name.toLowerCase() === districtName?.toLowerCase()
   );
-  return d ? { lat: d.lat, lon: d.lon } : null;
+  return d ? { lat: d.lat, lon: d.lon, state: d.state } : null;
 }
 
+/**
+ * Get district name from coordinates (legacy function)
+ * @param {number} lat - Latitude
+ * @param {number} lon - Longitude
+ * @returns {string} District name
+ */
 export function getDistrictFromCoords(lat, lon) {
-  let nearest = RAJASTHAN_DISTRICTS[0];
+  let nearest = ALL_DISTRICTS[0];
   let minD = Infinity;
-  for (const d of RAJASTHAN_DISTRICTS) {
+  for (const d of ALL_DISTRICTS) {
     const dist = haversine(lat, lon, d.lat, d.lon);
     if (dist < minD) {
       minD = dist;

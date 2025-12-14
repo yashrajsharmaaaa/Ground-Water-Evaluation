@@ -32,21 +32,42 @@ export default function DashboardScreen() {
   const [suggestions, setSuggestions] = useState([]);
   const fadeAnim = useState(new Animated.Value(0))[0];
 
-  // Backend API URL (replace with your ngrok URL)
-  const API_BASE_URL = "https://makhi-enuretic-sherrie.ngrok-free.dev";
+  // Backend API URL - Using local network IP (same as chatbot)
+  const API_BASE_URL = "http://192.168.0.193:3000";
 
-  // Hardcoded popular places with coordinates
+  // Popular places across 12 water-stressed states
   const POPULAR_PLACES = [
-    { name: "Jaipur", lat: 26.91, lon: 75.79 },
-    { name: "Jodhpur", lat: 26.24, lon: 73.02 },
-    { name: "Udaipur", lat: 24.58, lon: 73.71 },
-    { name: "Bikaner", lat: 28.02, lon: 73.31 },
-    { name: "Ajmer", lat: 26.45, lon: 74.64 },
-    { name: "Kota", lat: 25.18, lon: 75.83 },
-    { name: "Alwar", lat: 27.56, lon: 76.60 },
-    { name: "Bharatpur", lat: 27.22, lon: 77.50 },
-    { name: "Sikar", lat: 27.61, lon: 75.14 },
-    { name: "Pali", lat: 25.77, lon: 73.32 },
+    // Rajasthan
+    { name: "Jaipur", state: "Rajasthan", lat: 26.91, lon: 75.79 },
+    { name: "Jodhpur", state: "Rajasthan", lat: 26.24, lon: 73.02 },
+    { name: "Udaipur", state: "Rajasthan", lat: 24.58, lon: 73.71 },
+    // Gujarat
+    { name: "Ahmedabad", state: "Gujarat", lat: 23.03, lon: 72.58 },
+    { name: "Surat", state: "Gujarat", lat: 21.17, lon: 72.83 },
+    // Maharashtra
+    { name: "Mumbai", state: "Maharashtra", lat: 19.07, lon: 72.87 },
+    { name: "Pune", state: "Maharashtra", lat: 18.52, lon: 73.85 },
+    // Uttar Pradesh
+    { name: "Lucknow", state: "Uttar Pradesh", lat: 26.85, lon: 80.95 },
+    { name: "Kanpur", state: "Uttar Pradesh", lat: 26.45, lon: 80.35 },
+    // Madhya Pradesh
+    { name: "Bhopal", state: "Madhya Pradesh", lat: 23.26, lon: 77.41 },
+    { name: "Indore", state: "Madhya Pradesh", lat: 22.72, lon: 75.86 },
+    // Tamil Nadu
+    { name: "Chennai", state: "Tamil Nadu", lat: 13.08, lon: 80.27 },
+    { name: "Coimbatore", state: "Tamil Nadu", lat: 11.02, lon: 76.97 },
+    // Telangana
+    { name: "Hyderabad", state: "Telangana", lat: 17.39, lon: 78.49 },
+    // Andhra Pradesh
+    { name: "Visakhapatnam", state: "Andhra Pradesh", lat: 17.69, lon: 83.21 },
+    // Punjab
+    { name: "Ludhiana", state: "Punjab", lat: 30.90, lon: 75.85 },
+    { name: "Amritsar", state: "Punjab", lat: 31.63, lon: 74.87 },
+    // Haryana
+    { name: "Gurugram", state: "Haryana", lat: 28.46, lon: 77.03 },
+    { name: "Faridabad", state: "Haryana", lat: 28.41, lon: 77.31 },
+    // Delhi
+    { name: "New Delhi", state: "Delhi", lat: 28.61, lon: 77.21 },
   ];
 
   // Fetch groundwater data from backend
@@ -178,22 +199,23 @@ export default function DashboardScreen() {
   // Handle place search
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
-      Alert.alert("Input Required", "Please enter a place name (e.g., Jaipur, Udaipur)");
+      Alert.alert("Input Required", "Please enter a city name (e.g., Jaipur, Mumbai, Chennai)");
       return;
     }
 
     try {
       const normalizedQuery = searchQuery.trim().toLowerCase();
       const results = POPULAR_PLACES.filter((place) =>
-        place.name.toLowerCase().includes(normalizedQuery)
+        place.name.toLowerCase().includes(normalizedQuery) ||
+        place.state.toLowerCase().includes(normalizedQuery)
       ).map((place) => ({
-        name: `${place.name}, Rajasthan, India`,
+        name: `${place.name}, ${place.state}, India`,
         lat: place.lat,
         lon: place.lon,
       }));
 
       if (results.length === 0) {
-        throw new Error(`No locations found for "${searchQuery}"`);
+        throw new Error(`No locations found for "${searchQuery}". Try: Jaipur, Mumbai, Chennai, Hyderabad`);
       }
 
       if (results.length === 1) {
@@ -228,7 +250,7 @@ export default function DashboardScreen() {
       await fetchGroundwaterData(
         location.lat,
         location.lon,
-        `${location.name}, Rajasthan, India`
+        `${location.name}, ${location.state}, India`
       );
     } catch (err) {
       setError(err.message);
@@ -259,9 +281,10 @@ export default function DashboardScreen() {
     try {
       const normalizedQuery = query.toLowerCase().trim();
       const results = POPULAR_PLACES.filter((place) =>
-        place.name.toLowerCase().includes(normalizedQuery)
+        place.name.toLowerCase().includes(normalizedQuery) ||
+        place.state.toLowerCase().includes(normalizedQuery)
       ).map((place) => ({
-        name: `${place.name}, Rajasthan, India`,
+        name: `${place.name}, ${place.state}, India`,
         lat: place.lat,
         lon: place.lon,
       }));
@@ -407,8 +430,8 @@ export default function DashboardScreen() {
       {/* Header Section */}
       <View style={styles.headerSection}>
         <View>
-          <Text style={styles.title}>💧 Groundwater Dashboard</Text>
-          <Text style={styles.subtitle}>Real-time monitoring from 5,260 DWLR stations</Text>
+          <Text style={styles.title}>💧 JalMitra Dashboard</Text>
+          <Text style={styles.subtitle}>All India Coverage • 414 Districts • 12 States</Text>
         </View>
         <TouchableOpacity style={styles.infoButton}>
           <Ionicons name="information-circle-outline" size={24} color="#007AFF" />
@@ -419,7 +442,7 @@ export default function DashboardScreen() {
       <Card style={styles.card} elevation={2}>
         <Card.Content>
           <Searchbar
-            placeholder="Search places in Rajasthan (e.g., Jaipur, Udaipur, Jodhpur)"
+            placeholder="Search cities across India (e.g., Jaipur, Mumbai, Chennai)"
             onChangeText={setSearchQuery}
             value={searchQuery}
             onIconPress={handleSearch}
@@ -448,20 +471,29 @@ export default function DashboardScreen() {
 
           {/* Popular Places */}
           <View style={styles.popularContainer}>
-            <Text style={styles.popularTitle}>Popular Places:</Text>
-            <View style={styles.chipsContainer}>
-              {POPULAR_PLACES.map((place, index) => (
-                <Chip
-                  key={index}
-                  mode="outlined"
-                  onPress={() => handlePopularPlaceSelect(place.name)}
-                  style={styles.chip}
-                  textStyle={styles.chipText}
-                >
-                  {place.name}
-                </Chip>
-              ))}
-            </View>
+            <Text style={styles.popularTitle}>🌍 Popular Cities Across India:</Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.chipsScrollView}
+            >
+              <View style={styles.chipsContainer}>
+                {POPULAR_PLACES.slice(0, 10).map((place, index) => (
+                  <Chip
+                    key={index}
+                    mode="outlined"
+                    onPress={() => handlePopularPlaceSelect(place.name)}
+                    style={styles.chip}
+                    textStyle={styles.chipText}
+                  >
+                    {place.name}
+                  </Chip>
+                ))}
+              </View>
+            </ScrollView>
+            <Text style={styles.coverageText}>
+              ✅ Covering 12 water-stressed states: Rajasthan, Gujarat, Maharashtra, UP, MP, Karnataka, Tamil Nadu, Telangana, AP, Punjab, Haryana, Delhi
+            </Text>
           </View>
 
           <TouchableOpacity
@@ -817,17 +849,26 @@ const styles = StyleSheet.create({
     color: "#374151",
     marginBottom: 8,
   },
+  chipsScrollView: {
+    marginBottom: 12,
+  },
   chipsContainer: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 8,
+    paddingRight: 16,
   },
   chip: {
     marginBottom: 4,
-    marginRight: 8,
   },
   chipText: {
     fontSize: 12,
+  },
+  coverageText: {
+    fontSize: 11,
+    color: "#16A34A",
+    fontStyle: "italic",
+    marginTop: 8,
+    lineHeight: 16,
   },
   locationButton: {
     backgroundColor: "#007AFF",

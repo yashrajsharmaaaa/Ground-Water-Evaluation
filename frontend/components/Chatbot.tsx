@@ -1,9 +1,14 @@
-// components/ChatbotFloatingIcon.js
+// components/ChatbotFloatingIcon.tsx
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Animated, StyleSheet, TouchableOpacity } from 'react-native';
+import { Animated, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
 
-const ChatbotFloatingIcon = ({ onPress, style }) => {
+interface ChatbotFloatingIconProps {
+  onPress: () => void;
+  style?: ViewStyle;
+}
+
+const ChatbotFloatingIcon: React.FC<ChatbotFloatingIconProps> = ({ onPress, style }) => {
   const scaleValue = React.useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -32,7 +37,7 @@ const ChatbotFloatingIcon = ({ onPress, style }) => {
 const styles = StyleSheet.create({
   floatingButton: {
     position: 'absolute',
-    bottom: 30,
+    bottom: 90,
     right: 20,
     elevation: 8,
     shadowColor: '#000',

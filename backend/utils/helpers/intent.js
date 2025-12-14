@@ -1,4 +1,4 @@
-import { RAJASTHAN_DISTRICTS } from "../district.js";
+import { ALL_DISTRICTS } from "../../data/districts/index.js";
 
 export function analyzeIntent(message, providedDistrict, lat, lon, date) {
   // Ensure message is a string
@@ -15,8 +15,8 @@ export function analyzeIntent(message, providedDistrict, lat, lon, date) {
   let inferredDistrict = null;
   let requestedRange = date ? "custom" : "live";
 
-  // Extract district from message
-  for (const d of RAJASTHAN_DISTRICTS) {
+  // Extract district from message - now searches all India
+  for (const d of ALL_DISTRICTS) {
     if (lowerMessage.includes(d.name.toLowerCase())) {
       inferredDistrict = d.name;
       break;

@@ -36,7 +36,7 @@ const ChatbotScreen = ({ navigation, groundwaterData, currentLocation }) => {
 
   const scrollViewRef = useRef(null);
 
-  const API_BASE_URL = "https://makhi-enuretic-sherrie.ngrok-free.dev";
+  const API_BASE_URL = "http://192.168.0.193:3000";
 
   const scrollToBottom = () => {
     setTimeout(() => {

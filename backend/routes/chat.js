@@ -6,8 +6,6 @@ import {
   getDistrictFromCoords,
 } from "../utils/helpers/geo.js";
 import { analyzeIntent } from "../utils/helpers/intent.js";
-{
-}
 import {
   summarizeContextForChat,
   summarizeLocalForChat,
@@ -17,30 +15,11 @@ import {
   fetchGroundwaterData,
   fetchLocalWaterLevel,
 } from "../utils/helpers/fetch.js";
+import { haversine, toRad, formatDate } from "../utils/geo.js";
 
 dotenv.config({ path: [".env.local", ".env"] });
 
 const router = Router();
-
-function toRad(deg) {
-  return (deg * Math.PI) / 180;
-}
-
-function haversine(lat1, lon1, lat2, lon2) {
-  const R = 6371; // km
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function formatDate(date) {
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return null;
-  return d.toISOString().split("T")[0];
-}
 
 function stripCodeFences(s) {
   if (!s) return s;
@@ -102,6 +81,21 @@ router.post("/chat", async (req, res) => {
     console.log("🌐 Language:", language);
     
     if (!message) return res.status(400).json({ error: "Message is required" });
+
+    // Validate coordinates if provided
+    if (lat !== undefined && lat !== null) {
+      const latitude = parseFloat(lat);
+      if (isNaN(latitude) || latitude < -90 || latitude > 90) {
+        return res.status(400).json({ error: "lat must be a valid number between -90 and 90" });
+      }
+    }
+    
+    if (lon !== undefined && lon !== null) {
+      const longitude = parseFloat(lon);
+      if (isNaN(longitude) || longitude < -180 || longitude > 180) {
+        return res.status(400).json({ error: "lon must be a valid number between -180 and 180" });
+      }
+    }
 
     // Precompute district from lat/lon for fallback
     let precomputedDistrict = null;
@@ -248,14 +242,20 @@ router.post("/chat", async (req, res) => {
           );
         }
 
-        const results = await Promise.race(
+        // Wait for all promises to complete
+        const results = await Promise.all(
           fetchPromises.map((p) => p.catch((e) => ({ error: e })))
         );
-        if (results.error) throw results.error;
+        
+        // Check if any failed
+        const failed = results.find(r => r.error);
+        if (failed) throw failed.error;
 
-        apiSummary = results.data;
-        console.log("✅ Data fetched successfully:", results.source);
-        apiSummary._rawCount = results.rawCount;
+        // Use the first successful result (typically only one data source is requested)
+        const successfulResult = results[0];
+        apiSummary = successfulResult.data;
+        console.log("✅ Data fetched successfully:", successfulResult.source);
+        apiSummary._rawCount = successfulResult.rawCount;
         effectiveContext = JSON.stringify(apiSummary, null, 2);
         req.body.context = effectiveContext;
       } catch (err) {

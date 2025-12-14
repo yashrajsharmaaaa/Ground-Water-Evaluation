@@ -1,0 +1,15 @@
+[
+  { "name": "Anantapur", "lat": 14.68, "lon": 77.60, "state": "Andhra Pradesh" },
+  { "name": "Chittoor", "lat": 13.22, "lon": 79.10, "state": "Andhra Pradesh" },
+  { "name": "East Godavari", "lat": 17.00, "lon": 81.78, "state": "Andhra Pradesh" },
+  { "name": "Guntur", "lat": 16.31, "lon": 80.44, "state": "Andhra Pradesh" },
+  { "name": "Krishna", "lat": 16.57, "lon": 80.40, "state": "Andhra Pradesh" },
+  { "name": "Kurnool", "lat": 15.83, "lon": 78.04, "state": "Andhra Pradesh" },
+  { "name": "Nellore", "lat": 14.45, "lon": 79.99, "state": "Andhra Pradesh" },
+  { "name": "Prakasam", "lat": 15.35, "lon": 79.57, "state": "Andhra Pradesh" },
+  { "name": "Srikakulam", "lat": 18.30, "lon": 83.90, "state": "Andhra Pradesh" },
+  { "name": "Visakhapatnam", "lat": 17.69, "lon": 83.21, "state": "Andhra Pradesh" },
+  { "name": "Vizianagaram", "lat": 18.12, "lon": 83.41, "state": "Andhra Pradesh" },
+  { "name": "West Godavari", "lat": 16.92, "lon": 81.33, "state": "Andhra Pradesh" },
+  { "name": "YSR Kadapa", "lat": 14.47, "lon": 78.82, "state": "Andhra Pradesh" }
+]
