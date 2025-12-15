@@ -1,6 +1,6 @@
 # JalMitra - Final Project Summary
 
-**Smart India Hackathon 2025 | Problem Statement SIH25068**
+**Intelligent Groundwater Monitoring System**
 
 ---
 
@@ -605,7 +605,6 @@ ISC License - See LICENSE file for details
 
 ## 🙏 Acknowledgments
 
-- **Smart India Hackathon 2025** - Problem Statement SIH25068
 - **Central Ground Water Board** - WRIS API data
 - **OpenRouter** - AI chatbot integration
 - **Open Source Community** - Libraries and tools
