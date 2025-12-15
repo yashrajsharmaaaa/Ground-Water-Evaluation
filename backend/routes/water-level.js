@@ -282,19 +282,14 @@ router.post("/water-levels", async (req, res) => {
 
     // Recharge trend
     let rechargeTrend = null;
-    let rechargeFitted = [];
     if (rechargePattern.length > 2) {
       const x = rechargePattern.map((r) => r.year);
       const y = rechargePattern.map((r) => parseFloat(r.rechargeAmount));
-      const { slope, fitted } = computeLinearRegression(x, y);
+      const { slope } = computeLinearRegression(x, y);
       rechargeTrend = {
         annualChange: slope.toFixed(2),
         description: slope > 0 ? "Increasing recharge" : "Decreasing recharge",
       };
-      rechargeFitted = rechargePattern.map((r, i) => ({
-        year: r.year,
-        fitted: fitted[i].toFixed(2),
-      }));
     } else if (rechargePattern.length === 0) {
       rechargeTrend = {
         note: "Insufficient pre/post-monsoon data pairs to compute recharge pattern",
@@ -382,67 +377,19 @@ router.post("/water-levels", async (req, res) => {
       };
     }
 
-    // Monthly averages
-    const monthlyAverages = [];
-    for (const [yearMonth, dates] of monthlyGroups) {
-      for (const [date, levels] of dates) {
-        monthlyAverages.push({
-          date,
-          average: (
-            levels.reduce((sum, val) => sum + val, 0) / levels.length
-          ).toFixed(2),
-        });
-      }
-    }
-    monthlyAverages.sort((a, b) => new Date(a.date) - new Date(b.date));
+    // Note: monthlyAverages and yearlySummary removed to reduce payload size
+    // Chat helper computes its own monthly averages from raw data when needed
 
-    // Full monthly data for 5 years
-    const fiveYearStart = new Date(endDate);
-    fiveYearStart.setFullYear(fiveYearStart.getFullYear() - 5);
-    const fullMonthly = [];
-    const dateMap = new Map(monthlyAverages.map((m) => [m.date, m.average]));
-    let current = new Date(fiveYearStart);
-    while (current <= endDate) {
-      const yearMonth = current.toISOString().slice(0, 7);
-      const availableDates = monthlyGroups.get(yearMonth)
-        ? Array.from(monthlyGroups.get(yearMonth).keys())
-        : [];
-      if (availableDates.length > 0) {
-        availableDates.forEach((date) => {
-          fullMonthly.push({ date, average: dateMap.get(date) || null });
-        });
-      } else {
-        fullMonthly.push({ date: null, average: null });
-      }
-      current.setMonth(current.getMonth() + 1);
-    }
-
-    // Yearly summary
-    const yearlySummary = Array.from(yearlyGroups.entries())
-      .map(([year, levels]) => ({
-        year: parseInt(year),
-        average: (
-          levels.reduce((sum, val) => sum + val, 0) / levels.length
-        ).toFixed(2),
-        min: Math.min(...levels).toFixed(2),
-        max: Math.max(...levels).toFixed(2),
-      }))
-      .sort((a, b) => a.year - b.year);
-
-    // Plot data
+    // Plot data - optimized to only include data used by frontend
     const plotData = {
       historicalWaterLevels: history.map((h) => ({
         date: h.date,
         waterLevel: h.waterLevel.toFixed(2),
       })),
-      trendLine: fittedWaterLevels, // Linear regression trend line for plotting
-      monthlyAverages,
-      yearlySummary,
       rechargePattern: rechargePattern.map((r) => ({
         year: r.year,
         recharge: parseFloat(r.rechargeAmount),
       })),
-      rechargeFitted,
       prePostMonsoon: rechargePattern.map((r) => ({
         year: r.year,
         pre: parseFloat(r.preMonsoonDepth),

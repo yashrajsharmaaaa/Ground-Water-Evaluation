@@ -67,7 +67,7 @@ export default function ProfileScreen() {
         <View style={styles.notLoggedIn}>
           <Ionicons name="person-circle-outline" size={80} color="#9CA3AF" />
           <Text style={styles.notLoggedInTitle}>Not Logged In</Text>
-          <Text style={styles.notLoggedInText}>Sign in to access your JalMitra profile and save favorites</Text>
+          <Text style={styles.notLoggedInText}>Sign in to access your JalMitra profile</Text>
           <TouchableOpacity style={styles.loginButton} onPress={() => router.push('/login')}>
             <Text style={styles.loginButtonText}>Sign In</Text>
           </TouchableOpacity>
@@ -103,11 +103,7 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="location-outline" size={24} color="#374151" />
-            <Text style={styles.menuItemText}>Favorite Locations</Text>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
+
 
           <TouchableOpacity style={styles.menuItem}>
             <Ionicons name="notifications-outline" size={24} color="#374151" />

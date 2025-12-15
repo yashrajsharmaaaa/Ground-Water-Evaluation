@@ -9,12 +9,15 @@ import {
   FlatList,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from 'react-native-paper';
 import MapView, { Marker, Callout } from 'react-native-maps';
+import apiClient from '@/services/apiClient';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -29,43 +32,85 @@ export default function ExploreScreen() {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [stations, setStations] = useState([]);
-  const [viewMode, setViewMode] = useState('map'); // 'map' or 'list'
+  const [viewMode, setViewMode] = useState('insights'); // 'insights', 'map', or 'list'
   const [selectedStation, setSelectedStation] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedState, setSelectedState] = useState('All');
+  const [selectedStatus, setSelectedStatus] = useState('All');
+  const [insights, setInsights] = useState(null);
 
-  // Backend API URL - Local development
-  const API_BASE_URL = "http://192.168.0.193:3000";
+  // 12 water-stressed states covered by JalMitra
+  const COVERED_STATES = [
+    'All', 'Rajasthan', 'Gujarat', 'Maharashtra', 'Uttar Pradesh', 
+    'Madhya Pradesh', 'Karnataka', 'Tamil Nadu', 'Telangana', 
+    'Andhra Pradesh', 'Punjab', 'Haryana', 'Delhi'
+  ];
 
-  // Sample stations across 12 water-stressed states
+  // Sample stations across 12 water-stressed states (fallback if API fails)
   const SAMPLE_STATIONS = [
-    // Rajasthan
-    { id: 1, name: 'Jaipur Station', state: 'Rajasthan', lat: 26.9124, lon: 75.7873, level: 34.1, status: 'safe' },
-    { id: 2, name: 'Jodhpur Station', state: 'Rajasthan', lat: 26.2389, lon: 73.0243, level: 32.5, status: 'critical' },
-    // Gujarat
-    { id: 3, name: 'Ahmedabad Station', state: 'Gujarat', lat: 23.03, lon: 72.58, level: 70.5, status: 'over-exploited' },
-    { id: 4, name: 'Surat Station', state: 'Gujarat', lat: 21.17, lon: 72.83, level: 45.2, status: 'semi-critical' },
-    // Maharashtra
-    { id: 5, name: 'Mumbai Station', state: 'Maharashtra', lat: 19.07, lon: 72.87, level: 2.95, status: 'safe' },
-    { id: 6, name: 'Pune Station', state: 'Maharashtra', lat: 18.52, lon: 73.85, level: 4.60, status: 'safe' },
-    // Uttar Pradesh
-    { id: 7, name: 'Lucknow Station', state: 'Uttar Pradesh', lat: 26.85, lon: 80.95, level: 39.3, status: 'semi-critical' },
-    // Madhya Pradesh
-    { id: 8, name: 'Bhopal Station', state: 'Madhya Pradesh', lat: 23.26, lon: 77.41, level: 1.80, status: 'safe' },
-    // Tamil Nadu
-    { id: 9, name: 'Chennai Station', state: 'Tamil Nadu', lat: 13.08, lon: 80.27, level: 1.87, status: 'critical' },
-    // Telangana
-    { id: 10, name: 'Hyderabad Station', state: 'Telangana', lat: 17.39, lon: 78.49, level: 11.0, status: 'semi-critical' },
-    // Andhra Pradesh
-    { id: 11, name: 'Visakhapatnam Station', state: 'Andhra Pradesh', lat: 17.69, lon: 83.21, level: 10.7, status: 'safe' },
-    // Punjab
-    { id: 12, name: 'Ludhiana Station', state: 'Punjab', lat: 30.90, lon: 75.85, level: 33.6, status: 'over-exploited' },
-    // Haryana
-    { id: 13, name: 'Gurugram Station', state: 'Haryana', lat: 28.46, lon: 77.03, level: 21.3, status: 'critical' },
+    { id: 1, name: 'Jaipur Station', state: 'Rajasthan', lat: 26.9124, lon: 75.7873, level: 34.1, status: 'safe', trend: 'declining' },
+    { id: 2, name: 'Jodhpur Station', state: 'Rajasthan', lat: 26.2389, lon: 73.0243, level: 32.5, status: 'critical', trend: 'declining' },
+    { id: 3, name: 'Ahmedabad Station', state: 'Gujarat', lat: 23.03, lon: 72.58, level: 70.5, status: 'over-exploited', trend: 'declining' },
+    { id: 4, name: 'Surat Station', state: 'Gujarat', lat: 21.17, lon: 72.83, level: 45.2, status: 'semi-critical', trend: 'stable' },
+    { id: 5, name: 'Mumbai Station', state: 'Maharashtra', lat: 19.07, lon: 72.87, level: 2.95, status: 'safe', trend: 'rising' },
+    { id: 6, name: 'Pune Station', state: 'Maharashtra', lat: 18.52, lon: 73.85, level: 4.60, status: 'safe', trend: 'stable' },
+    { id: 7, name: 'Lucknow Station', state: 'Uttar Pradesh', lat: 26.85, lon: 80.95, level: 39.3, status: 'semi-critical', trend: 'declining' },
+    { id: 8, name: 'Bhopal Station', state: 'Madhya Pradesh', lat: 23.26, lon: 77.41, level: 1.80, status: 'safe', trend: 'stable' },
+    { id: 9, name: 'Chennai Station', state: 'Tamil Nadu', lat: 13.08, lon: 80.27, level: 1.87, status: 'critical', trend: 'declining' },
+    { id: 10, name: 'Hyderabad Station', state: 'Telangana', lat: 17.39, lon: 78.49, level: 11.0, status: 'semi-critical', trend: 'declining' },
+    { id: 11, name: 'Visakhapatnam Station', state: 'Andhra Pradesh', lat: 17.69, lon: 83.21, level: 10.7, status: 'safe', trend: 'stable' },
+    { id: 12, name: 'Ludhiana Station', state: 'Punjab', lat: 30.90, lon: 75.85, level: 33.6, status: 'over-exploited', trend: 'declining' },
+    { id: 13, name: 'Gurugram Station', state: 'Haryana', lat: 28.46, lon: 77.03, level: 21.3, status: 'critical', trend: 'declining' },
   ];
 
   useEffect(() => {
     getCurrentLocation();
-    setStations(SAMPLE_STATIONS);
+    loadStationsData();
   }, []);
+
+  // Compute insights from station data
+  useEffect(() => {
+    if (stations.length > 0) {
+      computeInsights();
+    }
+  }, [stations]);
+
+  const loadStationsData = () => {
+    // For now, use sample data. In production, this would fetch from backend
+    // Backend would need a new endpoint: GET /api/stations/all
+    setStations(SAMPLE_STATIONS);
+  };
+
+  const computeInsights = () => {
+    const total = stations.length;
+    const byStatus = {
+      safe: stations.filter(s => s.status === 'safe').length,
+      'semi-critical': stations.filter(s => s.status === 'semi-critical').length,
+      critical: stations.filter(s => s.status === 'critical').length,
+      'over-exploited': stations.filter(s => s.status === 'over-exploited').length,
+    };
+    
+    const declining = stations.filter(s => s.trend === 'declining').length;
+    const avgLevel = (stations.reduce((sum, s) => sum + s.level, 0) / total).toFixed(2);
+    
+    // Find most critical districts
+    const criticalStations = stations
+      .filter(s => s.status === 'critical' || s.status === 'over-exploited')
+      .sort((a, b) => {
+        const statusOrder = { 'over-exploited': 0, 'critical': 1 };
+        return statusOrder[a.status] - statusOrder[b.status];
+      })
+      .slice(0, 5);
+
+    setInsights({
+      total,
+      byStatus,
+      declining,
+      avgLevel,
+      criticalStations,
+      statesCount: new Set(stations.map(s => s.state)).size,
+    });
+  };
 
   const getCurrentLocation = async () => {
     try {
@@ -129,6 +174,149 @@ export default function ExploreScreen() {
     handleMarkerPress(station);
   };
 
+  // Filter stations based on search, state, and status
+  const filteredStations = stations.filter(station => {
+    const matchesSearch = station.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         station.state.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesState = selectedState === 'All' || station.state === selectedState;
+    const matchesStatus = selectedStatus === 'All' || station.status === selectedStatus;
+    return matchesSearch && matchesState && matchesStatus;
+  });
+
+  const renderInsightsView = () => {
+    if (!insights) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Computing insights...</Text>
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView style={styles.insightsContainer} showsVerticalScrollIndicator={false}>
+        {/* Overview Cards */}
+        <View style={styles.overviewGrid}>
+          <Card style={styles.overviewCard}>
+            <Card.Content>
+              <Ionicons name="water" size={32} color="#007AFF" />
+              <Text style={styles.overviewNumber}>{insights.total}</Text>
+              <Text style={styles.overviewLabel}>Monitoring Stations</Text>
+            </Card.Content>
+          </Card>
+          
+          <Card style={styles.overviewCard}>
+            <Card.Content>
+              <Ionicons name="location" size={32} color="#16A34A" />
+              <Text style={styles.overviewNumber}>{insights.statesCount}</Text>
+              <Text style={styles.overviewLabel}>States Covered</Text>
+            </Card.Content>
+          </Card>
+        </View>
+
+        {/* Status Distribution */}
+        <Card style={styles.sectionCard}>
+          <Card.Content>
+            <Text style={styles.sectionTitle}>📊 Status Distribution</Text>
+            <View style={styles.statusGrid}>
+              <View style={styles.statusItem}>
+                <View style={[styles.statusDot, { backgroundColor: '#16A34A' }]} />
+                <Text style={styles.statusCount}>{insights.byStatus.safe}</Text>
+                <Text style={styles.statusLabel}>Safe</Text>
+              </View>
+              <View style={styles.statusItem}>
+                <View style={[styles.statusDot, { backgroundColor: '#D97706' }]} />
+                <Text style={styles.statusCount}>{insights.byStatus['semi-critical']}</Text>
+                <Text style={styles.statusLabel}>Semi-Critical</Text>
+              </View>
+              <View style={styles.statusItem}>
+                <View style={[styles.statusDot, { backgroundColor: '#EA580C' }]} />
+                <Text style={styles.statusCount}>{insights.byStatus.critical}</Text>
+                <Text style={styles.statusLabel}>Critical</Text>
+              </View>
+              <View style={styles.statusItem}>
+                <View style={[styles.statusDot, { backgroundColor: '#DC2626' }]} />
+                <Text style={styles.statusCount}>{insights.byStatus['over-exploited']}</Text>
+                <Text style={styles.statusLabel}>Over-Exploited</Text>
+              </View>
+            </View>
+          </Card.Content>
+        </Card>
+
+        {/* Key Metrics */}
+        <Card style={styles.sectionCard}>
+          <Card.Content>
+            <Text style={styles.sectionTitle}>📈 Key Metrics</Text>
+            <View style={styles.metricRow}>
+              <Ionicons name="trending-down" size={20} color="#DC2626" />
+              <Text style={styles.metricText}>
+                <Text style={styles.metricValue}>{insights.declining}</Text> stations showing declining trend
+              </Text>
+            </View>
+            <View style={styles.metricRow}>
+              <Ionicons name="analytics" size={20} color="#007AFF" />
+              <Text style={styles.metricText}>
+                Average water level: <Text style={styles.metricValue}>{insights.avgLevel}m</Text>
+              </Text>
+            </View>
+          </Card.Content>
+        </Card>
+
+        {/* Critical Districts Alert */}
+        {insights.criticalStations.length > 0 && (
+          <Card style={[styles.sectionCard, styles.alertCard]}>
+            <Card.Content>
+              <View style={styles.alertHeader}>
+                <Ionicons name="warning" size={24} color="#DC2626" />
+                <Text style={styles.alertTitle}>Critical Districts Requiring Attention</Text>
+              </View>
+              {insights.criticalStations.map((station, index) => (
+                <TouchableOpacity 
+                  key={station.id} 
+                  style={styles.criticalItem}
+                  onPress={() => handleStationCardPress(station)}
+                >
+                  <View style={styles.criticalInfo}>
+                    <Text style={styles.criticalName}>{station.name}</Text>
+                    <Text style={styles.criticalState}>{station.state}</Text>
+                  </View>
+                  <View style={[styles.statusBadgeSmall, { backgroundColor: getMarkerColor(station.status) }]}>
+                    <Text style={styles.statusTextSmall}>{station.status.toUpperCase()}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </Card.Content>
+          </Card>
+        )}
+
+        {/* Actionable Recommendations */}
+        <Card style={styles.sectionCard}>
+          <Card.Content>
+            <Text style={styles.sectionTitle}>💡 Recommendations</Text>
+            <View style={styles.recommendationItem}>
+              <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+              <Text style={styles.recommendationText}>
+                Monitor {insights.byStatus.critical + insights.byStatus['over-exploited']} high-risk districts closely
+              </Text>
+            </View>
+            <View style={styles.recommendationItem}>
+              <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+              <Text style={styles.recommendationText}>
+                Implement water conservation in {insights.declining} declining areas
+              </Text>
+            </View>
+            <View style={styles.recommendationItem}>
+              <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+              <Text style={styles.recommendationText}>
+                Use chatbot for detailed analysis of specific districts
+              </Text>
+            </View>
+          </Card.Content>
+        </Card>
+      </ScrollView>
+    );
+  };
+
   const renderStation = ({ item }) => (
     <TouchableOpacity onPress={() => handleStationCardPress(item)}>
       <Card style={styles.stationCard}>
@@ -163,25 +351,91 @@ export default function ExploreScreen() {
           <Text style={styles.headerSubtitle}>414 Districts • 12 Water-Stressed States</Text>
         </View>
         <TouchableOpacity 
-          onPress={() => setViewMode(viewMode === 'map' ? 'list' : 'map')} 
+          onPress={() => {
+            // Cycle through views: insights -> map -> list -> insights
+            if (viewMode === 'insights') setViewMode('map');
+            else if (viewMode === 'map') setViewMode('list');
+            else setViewMode('insights');
+          }} 
           style={styles.viewToggleButton}
         >
           <Ionicons 
-            name={viewMode === 'map' ? 'list' : 'map'} 
+            name={viewMode === 'insights' ? 'map' : viewMode === 'map' ? 'list' : 'stats-chart'} 
             size={24} 
             color="#007AFF" 
           />
         </TouchableOpacity>
-        <TouchableOpacity onPress={getCurrentLocation} style={styles.locationButton}>
-          <Ionicons name="locate" size={24} color="#007AFF" />
-        </TouchableOpacity>
+        {viewMode === 'map' && (
+          <TouchableOpacity onPress={getCurrentLocation} style={styles.locationButton}>
+            <Ionicons name="locate" size={24} color="#007AFF" />
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* Search and Filters (only for list view) */}
+      {viewMode === 'list' && (
+        <View style={styles.filtersContainer}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={20} color="#6B7280" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search stations or states..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor="#9CA3AF"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            )}
+          </View>
+          
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChips}>
+            <TouchableOpacity 
+              style={[styles.filterChip, selectedState === 'All' && styles.filterChipActive]}
+              onPress={() => setSelectedState('All')}
+            >
+              <Text style={[styles.filterChipText, selectedState === 'All' && styles.filterChipTextActive]}>
+                All States
+              </Text>
+            </TouchableOpacity>
+            {COVERED_STATES.slice(1).map(state => (
+              <TouchableOpacity 
+                key={state}
+                style={[styles.filterChip, selectedState === state && styles.filterChipActive]}
+                onPress={() => setSelectedState(state)}
+              >
+                <Text style={[styles.filterChipText, selectedState === state && styles.filterChipTextActive]}>
+                  {state}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChips}>
+            {['All', 'safe', 'semi-critical', 'critical', 'over-exploited'].map(status => (
+              <TouchableOpacity 
+                key={status}
+                style={[styles.filterChip, selectedStatus === status && styles.filterChipActive]}
+                onPress={() => setSelectedStatus(status)}
+              >
+                <Text style={[styles.filterChipText, selectedStatus === status && styles.filterChipTextActive]}>
+                  {status === 'All' ? 'All Status' : status.charAt(0).toUpperCase() + status.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
           <Text style={styles.loadingText}>Loading stations...</Text>
         </View>
+      ) : viewMode === 'insights' ? (
+        renderInsightsView()
       ) : viewMode === 'map' ? (
         <>
           <MapView
@@ -236,16 +490,30 @@ export default function ExploreScreen() {
           )}
         </>
       ) : (
-        <FlatList
-          data={stations}
-          renderItem={renderStation}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-        />
+        <>
+          <FlatList
+            data={filteredStations}
+            renderItem={renderStation}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="search-outline" size={64} color="#D1D5DB" />
+                <Text style={styles.emptyText}>No stations found</Text>
+                <Text style={styles.emptySubtext}>Try adjusting your filters</Text>
+              </View>
+            }
+          />
+          <View style={styles.resultsCount}>
+            <Text style={styles.resultsText}>
+              Showing {filteredStations.length} of {stations.length} stations
+            </Text>
+          </View>
+        </>
       )}
 
-      <View style={styles.legend}>
+      {viewMode === 'map' && <View style={styles.legend}>
         <Text style={styles.legendTitle}>Status Legend:</Text>
         <View style={styles.legendItems}>
           <View style={styles.legendItem}>
@@ -265,7 +533,7 @@ export default function ExploreScreen() {
             <Text style={styles.legendText}>Over-Exploited</Text>
           </View>
         </View>
-      </View>
+      </View>}
     </SafeAreaView>
   );
 }
@@ -289,6 +557,215 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
+  },
+  // Search and Filters
+  filtersContainer: {
+    backgroundColor: '#FFF',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  filterChips: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,
+    marginRight: 8,
+  },
+  filterChipActive: {
+    backgroundColor: '#007AFF',
+  },
+  filterChipText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  filterChipTextActive: {
+    color: '#FFF',
+  },
+  // Insights View
+  insightsContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  overviewGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  overviewCard: {
+    flex: 1,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    elevation: 2,
+  },
+  overviewNumber: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginTop: 8,
+  },
+  overviewLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  sectionCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    marginBottom: 16,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  statusGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  statusItem: {
+    alignItems: 'center',
+    width: '22%',
+  },
+  statusDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  statusCount: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  statusLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  metricText: {
+    fontSize: 15,
+    color: '#374151',
+    flex: 1,
+  },
+  metricValue: {
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  alertCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#DC2626',
+  },
+  alertHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  alertTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#DC2626',
+    flex: 1,
+  },
+  criticalItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  criticalInfo: {
+    flex: 1,
+  },
+  criticalName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  criticalState: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  recommendationItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 12,
+  },
+  recommendationText: {
+    fontSize: 15,
+    color: '#374151',
+    flex: 1,
+    lineHeight: 22,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+  resultsCount: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    right: 16,
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    padding: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  resultsText: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
   },
   headerTitle: {
     fontSize: 20,

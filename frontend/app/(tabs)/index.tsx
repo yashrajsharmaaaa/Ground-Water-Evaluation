@@ -385,6 +385,27 @@ export default function DashboardScreen() {
     };
   };
 
+  // Prepare data for Pre/Post Monsoon comparison chart
+  const getPrePostMonsoonData = () => {
+    if (!groundwaterData?.plotData?.prePostMonsoon || groundwaterData.plotData.prePostMonsoon.length === 0) {
+      return { labels: [], datasets: [] };
+    }
+    // Show last 5 years for readability
+    const recentData = groundwaterData.plotData.prePostMonsoon.slice(-5);
+    const labels = recentData.map((item) => item.year.toString().slice(-2));
+    const preData = recentData.map((item) => parseFloat(item.pre));
+    const postData = recentData.map((item) => parseFloat(item.post));
+    
+    return {
+      labels,
+      datasets: [
+        { data: preData, color: () => '#F59E0B' }, // Orange for pre-monsoon
+        { data: postData, color: () => '#3B82F6' }, // Blue for post-monsoon
+      ],
+      legend: ['Pre-Monsoon', 'Post-Monsoon'],
+    };
+  };
+
   // Minimal chart configuration
   const chartConfig = {
     backgroundGradientFrom: "#ffffff",
@@ -650,6 +671,27 @@ export default function DashboardScreen() {
             <Card style={styles.card}>
               <Card.Content>
                 <Text style={styles.cardTitle}>💧 Recharge Trend</Text>
+                
+                {/* Recharge Trend Indicator */}
+                {groundwaterData.rechargeTrend && !groundwaterData.rechargeTrend.note && (
+                  <View style={[
+                    styles.trendIndicator,
+                    { backgroundColor: parseFloat(groundwaterData.rechargeTrend.annualChange) > 0 ? '#DCFCE7' : '#FEE2E2' }
+                  ]}>
+                    <Ionicons 
+                      name={parseFloat(groundwaterData.rechargeTrend.annualChange) > 0 ? 'trending-up' : 'trending-down'} 
+                      size={20} 
+                      color={parseFloat(groundwaterData.rechargeTrend.annualChange) > 0 ? '#16A34A' : '#DC2626'} 
+                    />
+                    <Text style={[
+                      styles.trendText,
+                      { color: parseFloat(groundwaterData.rechargeTrend.annualChange) > 0 ? '#16A34A' : '#DC2626' }
+                    ]}>
+                      {groundwaterData.rechargeTrend.description}: {Math.abs(parseFloat(groundwaterData.rechargeTrend.annualChange))}m/year
+                    </Text>
+                  </View>
+                )}
+                
                 <View style={styles.chartContainer}>
                   {loading ? (
                     <ActivityIndicator size="large" color="#3B82F6" />
@@ -734,6 +776,47 @@ export default function DashboardScreen() {
                       fromZero={true}
                     />
                   )}
+                </View>
+              </Card.Content>
+            </Card>
+          )}
+
+          {/* Pre/Post Monsoon Comparison */}
+          {groundwaterData.plotData?.prePostMonsoon && groundwaterData.plotData.prePostMonsoon.length > 0 && (
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text style={styles.cardTitle}>🌧️ Pre vs Post Monsoon Levels</Text>
+                <Text style={styles.chartSubtitle}>Water depth comparison (last 5 years)</Text>
+                <View style={styles.chartContainer}>
+                  {loading ? (
+                    <ActivityIndicator size="large" color="#3B82F6" />
+                  ) : (
+                    <LineChart
+                      data={getPrePostMonsoonData()}
+                      width={chartWidth}
+                      height={chartHeight}
+                      yAxisSuffix="m"
+                      chartConfig={chartConfig}
+                      bezier
+                      style={styles.chart}
+                      withInnerLines={true}
+                      withOuterLines={false}
+                      withHorizontalLines={true}
+                      withVerticalLines={false}
+                      withDots={true}
+                      withShadow={false}
+                    />
+                  )}
+                </View>
+                <View style={styles.legendContainer}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: '#F59E0B' }]} />
+                    <Text style={styles.legendText}>Pre-Monsoon (Jan-May)</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: '#3B82F6' }]} />
+                    <Text style={styles.legendText}>Post-Monsoon (Oct-Dec)</Text>
+                  </View>
                 </View>
               </Card.Content>
             </Card>
@@ -1475,5 +1558,42 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
     marginTop: 8,
+  },
+  trendIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  trendText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  chartSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 12,
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
+    marginTop: 12,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendText: {
+    fontSize: 12,
+    color: '#374151',
   },
 });

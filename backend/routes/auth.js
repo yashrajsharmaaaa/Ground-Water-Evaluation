@@ -129,45 +129,4 @@ router.put('/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// Add favorite location
-router.post('/favorites', authenticateToken, async (req, res) => {
-  try {
-    const { district, lat, lon, name } = req.body;
-    const user = await User.findById(req.user.userId);
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    user.favoriteLocations.push({ district, lat, lon, name });
-    await user.save();
-
-    res.json({ favoriteLocations: user.favoriteLocations });
-  } catch (error) {
-    console.error('Add favorite error:', error);
-    res.status(500).json({ error: 'Failed to add favorite' });
-  }
-});
-
-// Remove favorite location
-router.delete('/favorites/:id', authenticateToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId);
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    user.favoriteLocations = user.favoriteLocations.filter(
-      loc => loc._id.toString() !== req.params.id
-    );
-    await user.save();
-
-    res.json({ favoriteLocations: user.favoriteLocations });
-  } catch (error) {
-    console.error('Remove favorite error:', error);
-    res.status(500).json({ error: 'Failed to remove favorite' });
-  }
-});
-
 export default router;

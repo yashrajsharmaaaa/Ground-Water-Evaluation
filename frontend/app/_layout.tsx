@@ -1,5 +1,4 @@
-import { useColorScheme } from '@/hooks/useColorScheme';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -8,7 +7,6 @@ import ChatbotFloatingIcon from '../components/Chatbot';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
@@ -16,13 +14,12 @@ export default function RootLayout() {
   const pathname = usePathname();
 
   if (!loaded) {
-    // Async font loading only occurs in development.
     return null;
   }
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <ThemeProvider value={DefaultTheme}>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen 
@@ -67,7 +64,8 @@ export default function RootLayout() {
           />
           <Stack.Screen name="+not-found" />
         </Stack>
-        {pathname !== '/chatbot' && (
+        {/* Show chatbot only on home/dashboard screen */}
+        {(pathname === '/' || pathname === '/(tabs)') && (
           <ChatbotFloatingIcon onPress={() => router.push('/chatbot')} style={undefined} />
         )}
         <StatusBar style="auto" />

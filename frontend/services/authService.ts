@@ -60,15 +60,7 @@ class AuthService {
     return response.data.user;
   }
 
-  async addFavorite(location: { district: string; lat: number; lon: number; name: string }): Promise<any> {
-    const response = await apiClient.post('/auth/favorites', location);
-    return response.data;
-  }
 
-  async removeFavorite(id: string): Promise<any> {
-    const response = await apiClient.delete(`/auth/favorites/${id}`);
-    return response.data;
-  }
 }
 
 export default new AuthService();

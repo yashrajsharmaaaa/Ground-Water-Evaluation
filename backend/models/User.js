@@ -27,13 +27,6 @@ const userSchema = new mongoose.Schema({
     default: 'user',
     index: true,
   },
-  favoriteLocations: [{
-    district: String,
-    lat: Number,
-    lon: Number,
-    name: String,
-    addedAt: { type: Date, default: Date.now }
-  }],
   preferences: {
     language: { type: String, default: 'english' },
     notifications: { type: Boolean, default: true }
@@ -48,10 +41,11 @@ const userSchema = new mongoose.Schema({
 });
 
 // Hash password before saving
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
+// ERROR FIX: Mongoose 6+ doesn't support next() callback in async middleware
+// Solution: Remove next() parameter and just return from async function
+userSchema.pre('save', async function() {
+  if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, 10);
-  next();
 });
 
 // Compare password method
