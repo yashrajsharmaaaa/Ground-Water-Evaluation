@@ -31,9 +31,11 @@ export default function DashboardScreen() {
   const [error, setError] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
   const fadeAnim = useState(new Animated.Value(0))[0];
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState("");
 
-  // Backend API URL - Deployed on Render
-  const API_BASE_URL = "https://jalmitra-backend.onrender.com";
+  // Backend API URL - Local development (use your PC's IP address)
+  const API_BASE_URL = "http://192.168.0.193:3000";
 
   // Popular places across 12 water-stressed states
   const POPULAR_PLACES = [
@@ -80,6 +82,22 @@ export default function DashboardScreen() {
     try {
       setLoading(true);
       setError(null);
+      setLoadingProgress(0);
+      setLoadingMessage("Connecting to server...");
+
+      // Simulate progress updates for better UX
+      const progressInterval = setInterval(() => {
+        setLoadingProgress((prev) => {
+          if (prev >= 90) return prev;
+          return prev + 10;
+        });
+      }, 1000);
+
+      // Update loading messages
+      setTimeout(() => setLoadingMessage("Fetching district data..."), 1000);
+      setTimeout(() => setLoadingMessage("Querying WRIS database..."), 3000);
+      setTimeout(() => setLoadingMessage("Processing historical data..."), 6000);
+      setTimeout(() => setLoadingMessage("Calculating predictions..."), 9000);
 
       const response = await fetch(`${API_BASE_URL}/api/water-levels`, {
         method: "POST",
@@ -93,6 +111,10 @@ export default function DashboardScreen() {
         }),
       });
 
+      clearInterval(progressInterval);
+      setLoadingProgress(100);
+      setLoadingMessage("Complete!");
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`HTTP ${response.status}: ${errorText}`);
@@ -103,12 +125,18 @@ export default function DashboardScreen() {
       setLocationName(placeName || `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
     } catch (err) {
       setError(err.message);
+      setLoadingProgress(0);
+      setLoadingMessage("");
       Alert.alert(
         "Error",
         `Failed to fetch groundwater data: ${err.message}. Please check your network or try again.`
       );
     } finally {
       setLoading(false);
+      setTimeout(() => {
+        setLoadingProgress(0);
+        setLoadingMessage("");
+      }, 500);
     }
   };
 
@@ -506,8 +534,27 @@ export default function DashboardScreen() {
         </Card.Content>
       </Card>
 
-      {/* Loading Indicator */}
-      {loading && !refreshing && <LoadingSkeleton />}
+      {/* Loading Indicator with Progress */}
+      {loading && !refreshing && (
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.loadingProgressContainer}>
+              <ActivityIndicator size="large" color="#007AFF" />
+              <Text style={styles.loadingProgressText}>{loadingMessage}</Text>
+              <View style={styles.progressBarContainer}>
+                <View style={[styles.progressBar, { width: `${loadingProgress}%` }]} />
+              </View>
+              <Text style={styles.progressPercentage}>{loadingProgress}%</Text>
+              <Text style={styles.loadingHint}>
+                {loadingProgress < 30 && "⏳ This may take 30-60 seconds..."}
+                {loadingProgress >= 30 && loadingProgress < 60 && "🔄 Fetching data from government servers..."}
+                {loadingProgress >= 60 && loadingProgress < 90 && "📊 Processing water level data..."}
+                {loadingProgress >= 90 && "✅ Almost done!"}
+              </Text>
+            </View>
+          </Card.Content>
+        </Card>
+      )}
 
       {/* Error Display */}
       {error && !loading && (
@@ -688,6 +735,208 @@ export default function DashboardScreen() {
                     />
                   )}
                 </View>
+              </Card.Content>
+            </Card>
+          )}
+
+          {/* Future Predictions */}
+          {groundwaterData.predictions?.futureWaterLevels && (
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text style={styles.cardTitle}>🔮 Future Water Level Predictions</Text>
+                <Text style={styles.predictionMethodology}>
+                  {groundwaterData.predictions.futureWaterLevels.methodology}
+                </Text>
+                <View style={styles.confidenceBadgeContainer}>
+                  <View style={[
+                    styles.confidenceBadge,
+                    { backgroundColor: 
+                      groundwaterData.predictions.futureWaterLevels.confidence === 'high' ? '#16A34A' :
+                      groundwaterData.predictions.futureWaterLevels.confidence === 'medium' ? '#D97706' : '#DC2626'
+                    }
+                  ]}>
+                    <Text style={styles.confidenceText}>
+                      {groundwaterData.predictions.futureWaterLevels.confidence.toUpperCase()} CONFIDENCE
+                    </Text>
+                  </View>
+                </View>
+                {groundwaterData.predictions.futureWaterLevels.predictions.map((pred, index) => (
+                  <View key={index} style={styles.predictionRow}>
+                    <View style={styles.predictionYear}>
+                      <Text style={styles.predictionYearText}>{pred.year}yr</Text>
+                    </View>
+                    <View style={styles.predictionDetails}>
+                      <Text style={styles.predictionLevel}>{pred.predictedLevel}m</Text>
+                      <Text style={styles.predictionDate}>{pred.date}</Text>
+                    </View>
+                  </View>
+                ))}
+              </Card.Content>
+            </Card>
+          )}
+
+          {/* Stress Category Transition */}
+          {groundwaterData.predictions?.stressCategoryTransition && (
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text style={styles.cardTitle}>⚠️ Stress Category Forecast</Text>
+                <View style={styles.stressCurrentContainer}>
+                  <Text style={styles.stressLabel}>Current Status:</Text>
+                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
+                    <Text style={styles.statusText}>
+                      {groundwaterData.predictions.stressCategoryTransition.currentCategory}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.stressDeclineRate}>
+                  Decline Rate: {groundwaterData.predictions.stressCategoryTransition.currentDeclineRate}m/year
+                </Text>
+                
+                {groundwaterData.predictions.stressCategoryTransition.predictions?.nextCategory ? (
+                  <>
+                    <View style={styles.transitionContainer}>
+                      <Ionicons name="arrow-forward" size={24} color="#DC2626" />
+                      <View style={styles.transitionInfo}>
+                        <Text style={styles.transitionLabel}>Transitioning to:</Text>
+                        <Text style={styles.transitionCategory}>
+                          {groundwaterData.predictions.stressCategoryTransition.predictions.nextCategory}
+                        </Text>
+                        <Text style={styles.transitionTime}>
+                          In {groundwaterData.predictions.stressCategoryTransition.predictions.yearsUntilTransition} years
+                        </Text>
+                        <Text style={styles.transitionDate}>
+                          Expected: {groundwaterData.predictions.stressCategoryTransition.predictions.estimatedTransitionDate}
+                        </Text>
+                      </View>
+                    </View>
+                    {groundwaterData.predictions.stressCategoryTransition.predictions.warning && (
+                      <View style={styles.warningBox}>
+                        <Ionicons name="warning" size={20} color="#DC2626" />
+                        <Text style={styles.warningText}>
+                          {groundwaterData.predictions.stressCategoryTransition.predictions.warning}
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <View style={styles.stableBox}>
+                    <Ionicons name="checkmark-circle" size={24} color="#16A34A" />
+                    <Text style={styles.stableText}>
+                      {groundwaterData.predictions.stressCategoryTransition.predictions?.message || 'Stable conditions'}
+                    </Text>
+                  </View>
+                )}
+              </Card.Content>
+            </Card>
+          )}
+
+          {/* Seasonal Predictions */}
+          {groundwaterData.predictions?.seasonalPredictions && (
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text style={styles.cardTitle}>🌦️ Seasonal Forecast</Text>
+                <Text style={styles.seasonalMethodology}>
+                  {groundwaterData.predictions.seasonalPredictions.methodology}
+                </Text>
+                <Text style={styles.currentSeason}>
+                  Current Season: {groundwaterData.predictions.seasonalPredictions.currentSeason}
+                </Text>
+                
+                {/* Next Season */}
+                <View style={styles.seasonCard}>
+                  <View style={styles.seasonHeader}>
+                    <Text style={styles.seasonTitle}>
+                      {groundwaterData.predictions.seasonalPredictions.nextSeason.season}
+                    </Text>
+                    <Text style={styles.seasonPeriod}>
+                      {groundwaterData.predictions.seasonalPredictions.nextSeason.period}
+                    </Text>
+                  </View>
+                  <View style={styles.seasonStats}>
+                    <View style={styles.seasonStat}>
+                      <Text style={styles.seasonStatLabel}>Predicted Level</Text>
+                      <Text style={styles.seasonStatValue}>
+                        {groundwaterData.predictions.seasonalPredictions.nextSeason.predictedLevel}m
+                      </Text>
+                    </View>
+                    <View style={styles.seasonStat}>
+                      <Text style={styles.seasonStatLabel}>Expected Recharge</Text>
+                      <Text style={[
+                        styles.seasonStatValue,
+                        { color: groundwaterData.predictions.seasonalPredictions.nextSeason.expectedRecharge > 0 ? '#16A34A' : '#DC2626' }
+                      ]}>
+                        {groundwaterData.predictions.seasonalPredictions.nextSeason.expectedRecharge > 0 ? '+' : ''}
+                        {groundwaterData.predictions.seasonalPredictions.nextSeason.expectedRecharge}m
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Following Season */}
+                <View style={styles.seasonCard}>
+                  <View style={styles.seasonHeader}>
+                    <Text style={styles.seasonTitle}>
+                      {groundwaterData.predictions.seasonalPredictions.followingSeason.season}
+                    </Text>
+                    <Text style={styles.seasonPeriod}>
+                      {groundwaterData.predictions.seasonalPredictions.followingSeason.period}
+                    </Text>
+                  </View>
+                  <View style={styles.seasonStats}>
+                    <View style={styles.seasonStat}>
+                      <Text style={styles.seasonStatLabel}>Predicted Level</Text>
+                      <Text style={styles.seasonStatValue}>
+                        {groundwaterData.predictions.seasonalPredictions.followingSeason.predictedLevel}m
+                      </Text>
+                    </View>
+                    <View style={styles.seasonStat}>
+                      <Text style={styles.seasonStatLabel}>Expected Recharge</Text>
+                      <Text style={[
+                        styles.seasonStatValue,
+                        { color: groundwaterData.predictions.seasonalPredictions.followingSeason.expectedRecharge > 0 ? '#16A34A' : '#DC2626' }
+                      ]}>
+                        {groundwaterData.predictions.seasonalPredictions.followingSeason.expectedRecharge > 0 ? '+' : ''}
+                        {groundwaterData.predictions.seasonalPredictions.followingSeason.expectedRecharge}m
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {groundwaterData.predictions.seasonalPredictions.confidence && (
+                  <View style={styles.confidenceBadgeContainer}>
+                    <View style={[
+                      styles.confidenceBadge,
+                      { backgroundColor: 
+                        groundwaterData.predictions.seasonalPredictions.confidence === 'high' ? '#16A34A' :
+                        groundwaterData.predictions.seasonalPredictions.confidence === 'medium' ? '#D97706' : '#DC2626'
+                      }
+                    ]}>
+                      <Text style={styles.confidenceText}>
+                        {groundwaterData.predictions.seasonalPredictions.confidence.toUpperCase()} CONFIDENCE
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </Card.Content>
+            </Card>
+          )}
+
+          {/* Prediction Errors */}
+          {groundwaterData.predictions?.errors && groundwaterData.predictions.errors.length > 0 && (
+            <Card style={[styles.card, styles.errorCard]}>
+              <Card.Content>
+                <Text style={styles.cardTitle}>⚠️ Prediction Limitations</Text>
+                {groundwaterData.predictions.errors.map((error, index) => (
+                  <View key={index} style={styles.errorItem}>
+                    <Ionicons name="information-circle" size={20} color="#D97706" />
+                    <View style={styles.errorContent}>
+                      <Text style={styles.errorMessage}>{error.message}</Text>
+                      <Text style={styles.errorAffected}>
+                        Affected: {error.affectedPredictions.join(', ')}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
               </Card.Content>
             </Card>
           )}
@@ -977,6 +1226,254 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   horizontalScrollChart: {
+    marginTop: 8,
+  },
+  // Prediction styles
+  predictionMethodology: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  confidenceBadgeContainer: {
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  confidenceBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  confidenceText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  predictionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  predictionYear: {
+    backgroundColor: '#007AFF',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  predictionYearText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  predictionDetails: {
+    flex: 1,
+  },
+  predictionLevel: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  predictionDate: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  // Stress transition styles
+  stressCurrentContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  stressLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  stressDeclineRate: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 16,
+  },
+  transitionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  transitionInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  transitionLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  transitionCategory: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#DC2626',
+    marginTop: 2,
+  },
+  transitionTime: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 4,
+  },
+  transitionDate: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#DC2626',
+  },
+  warningText: {
+    fontSize: 13,
+    color: '#DC2626',
+    fontWeight: '600',
+    marginLeft: 8,
+    flex: 1,
+  },
+  stableBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  stableText: {
+    fontSize: 14,
+    color: '#16A34A',
+    fontWeight: '600',
+    marginLeft: 8,
+    flex: 1,
+  },
+  // Seasonal prediction styles
+  seasonalMethodology: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
+  currentSeason: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 16,
+    textTransform: 'capitalize',
+  },
+  seasonCard: {
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  seasonHeader: {
+    marginBottom: 12,
+  },
+  seasonTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    textTransform: 'capitalize',
+  },
+  seasonPeriod: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  seasonStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  seasonStat: {
+    flex: 1,
+  },
+  seasonStatLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  seasonStatValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#007AFF',
+  },
+  // Error styles
+  errorItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  errorContent: {
+    marginLeft: 8,
+    flex: 1,
+  },
+  errorMessage: {
+    fontSize: 13,
+    color: '#374151',
+    marginBottom: 4,
+  },
+  errorAffected: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontStyle: 'italic',
+  },
+  // Loading progress styles
+  loadingProgressContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  loadingProgressText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  progressBarContainer: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#007AFF',
+    borderRadius: 4,
+  },
+  progressPercentage: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#007AFF',
+    marginBottom: 8,
+  },
+  loadingHint: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+    fontStyle: 'italic',
     marginTop: 8,
   },
 });
