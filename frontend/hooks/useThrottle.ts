@@ -9,10 +9,12 @@ export function useThrottle<T>(value: T, interval: number = 500): T {
   const lastExecuted = useRef<number>(Date.now());
 
   useEffect(() => {
+    // If enough time has passed since last execution, update immediately
     if (Date.now() >= lastExecuted.current + interval) {
       lastExecuted.current = Date.now();
       setThrottledValue(value);
     } else {
+      // Otherwise, schedule update for when interval expires
       const timerId = setTimeout(() => {
         lastExecuted.current = Date.now();
         setThrottledValue(value);

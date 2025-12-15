@@ -34,6 +34,7 @@ export function useApi<T = any>(
       setLoading(true);
       setError(null);
       
+      // Merge base config with override config (override takes precedence)
       const finalConfig = { ...config, ...overrideConfig };
       const response = await apiClient.request<T>(finalConfig);
       

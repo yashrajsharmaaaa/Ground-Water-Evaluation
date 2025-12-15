@@ -71,6 +71,7 @@ export function summarizeLocalForChat(
         };
       }
     } else {
+      // Sort by latest water level: ascending for lowest, descending for highest
       arr.sort((a, b) => {
         const aLatest = a.history[a.history.length - 1]?.value ?? -Infinity;
         const bLatest = b.history[b.history.length - 1]?.value ?? -Infinity;
@@ -249,7 +250,7 @@ function summarizeWrisForChat(
       } else {
         arr.sort((a, b) => {
           const aLatest = a.history[a.history.length - 1]?.value ?? -Infinity;
-          const bLatest = b.history[b.history.length - 1]?.value ?? -Infinity; // FIXED: was 'a', now 'b'
+          const bLatest = b.history[b.history.length - 1]?.value ?? -Infinity;
           return isLowest ? aLatest - bLatest : bLatest - aLatest;
         });
         const target = arr[0];

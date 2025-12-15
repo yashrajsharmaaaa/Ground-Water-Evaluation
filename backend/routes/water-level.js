@@ -3,15 +3,23 @@ import fetch from "node-fetch";
 import { getDistrict } from "../utils/helpers/geo.js";
 import { wrisCache, generateCacheKey } from "../utils/cache.js";
 import { haversine } from "../utils/geo.js";
+import { 
+  computeFutureWaterLevels, 
+  calculateConfidence, 
+  predictStressCategoryTransition,
+  predictSeasonalLevels 
+} from "../utils/predictions.js";
+import { calculateRSquared } from "../utils/statistics.js";
+import { validatePredictionInputs, validateSeasonalData } from "../utils/validation.js";
 const router = Router();
 
+// Least squares linear regression: y = slope * x + intercept
 function computeLinearRegression(x, y) {
   const n = x.length;
   const meanX = x.reduce((a, b) => a + b, 0) / n;
   const meanY = y.reduce((a, b) => a + b, 0) / n;
   const denominator = x.reduce((sum, xi) => sum + (xi - meanX) ** 2, 0);
   
-  // Handle division by zero (all x values are the same)
   if (denominator === 0) {
     return { slope: 0, intercept: meanY, fitted: y };
   }
@@ -123,13 +131,11 @@ router.post("/water-levels", async (req, res) => {
     
     json.data.forEach((s) => {
       const waterLevel = parseFloat(s.dataValue);
-      // Allow negative water levels (below ground reference) and zero
       if (isNaN(waterLevel)) {
         skippedRecords.invalidWaterLevel++;
         return;
       }
       
-      // Validate station coordinates
       const stationLat = parseFloat(s.latitude);
       const stationLon = parseFloat(s.longitude);
       if (isNaN(stationLat) || isNaN(stationLon)) {
@@ -149,12 +155,7 @@ router.post("/water-levels", async (req, res) => {
           wellDepth: s.wellDepth ? parseFloat(s.wellDepth) : null,
           wellAquiferType: s.wellAquiferType || "Unknown",
           history: [],
-          distance: haversine(
-            latitude, // FIXED: Use validated latitude
-            longitude, // FIXED: Use validated longitude
-            stationLat,
-            stationLon
-          ),
+          distance: haversine(latitude, longitude, stationLat, stationLon),
         });
       }
       stations.get(stationCode).history.push({
@@ -164,18 +165,14 @@ router.post("/water-levels", async (req, res) => {
     });
 
     if (stations.size === 0) {
-      console.log(`❌ No valid stations found. Skipped: ${skippedRecords.invalidWaterLevel} invalid water levels, ${skippedRecords.invalidCoords} invalid coordinates`);
+      console.log(`❌ No valid stations. Skipped: ${skippedRecords.invalidWaterLevel} water levels, ${skippedRecords.invalidCoords} coords`);
       return res.status(404).json({ 
         error: "No valid stations found",
-        debug: {
-          rawRecords,
-          skippedInvalidWaterLevel: skippedRecords.invalidWaterLevel,
-          skippedInvalidCoords: skippedRecords.invalidCoords
-        }
+        debug: { rawRecords, skippedInvalidWaterLevel: skippedRecords.invalidWaterLevel, skippedInvalidCoords: skippedRecords.invalidCoords }
       });
     }
     
-    console.log(`✅ Processed ${validRecords} valid records from ${stations.size} stations (Skipped: ${skippedRecords.invalidWaterLevel + skippedRecords.invalidCoords})`);
+    console.log(`✅ Processed ${validRecords} records from ${stations.size} stations`);
 
     // Sort history for each station
     for (const station of stations.values()) {
@@ -453,6 +450,114 @@ router.post("/water-levels", async (req, res) => {
       })),
     };
 
+    const predictions = { errors: [] };
+    
+    const intercept = fittedWaterLevels.length > 0 ? parseFloat(fittedWaterLevels[0].fitted) - overallSlope * 0 : 0;
+    const validationResult = validatePredictionInputs(history, overallSlope, intercept, { minPoints: 3, minSpanYears: 0 });
+    
+    if (!validationResult.isValid) {
+      console.warn(`⚠️ Prediction validation failed: ${validationResult.errors.join('; ')}`);
+    } else if (validationResult.validData.length < history.length) {
+      console.log(`✅ Validated: ${validationResult.validData.length}/${history.length} records`);
+    }
+    
+    try {
+      if (validationResult.isValid && validationResult.validData.length >= 3) {
+        const actualValues = validationResult.validData.map(h => h.waterLevel);
+        const predictedValues = fittedWaterLevels.slice(0, validationResult.validData.length).map(f => parseFloat(f.fitted));
+        const rSquared = calculateRSquared(actualValues, predictedValues);
+        const dataSpanYears = validationResult.metrics.dataSpanYears;
+        
+        const futureResult = computeFutureWaterLevels(validationResult.validData, overallSlope, intercept, new Date(date));
+        const confidence = calculateConfidence(validationResult.validData, rSquared, dataSpanYears);
+        
+        predictions.futureWaterLevels = { ...futureResult, confidence };
+      } else {
+        predictions.errors.push({
+          type: 'insufficient_data',
+          message: 'Insufficient historical data for future water level predictions (minimum 3 points required)',
+          affectedPredictions: ['futureWaterLevels']
+        });
+      }
+    } catch (error) {
+      console.error('❌ Future prediction error:', error.message);
+      predictions.errors.push({
+        type: 'computation_error',
+        message: `Failed to compute future water levels: ${error.message}`,
+        affectedPredictions: ['futureWaterLevels']
+      });
+    }
+    
+    try {
+      if (stressAnalysis.category && validationResult.isValid && currentWaterLevel) {
+        const stressResult = predictStressCategoryTransition(
+          stressAnalysis.category,
+          Math.abs(overallSlope),
+          parseFloat(currentWaterLevel)
+        );
+        
+        if (validationResult.validData.length >= 3 && fittedWaterLevels.length > 0) {
+          const actualValues = validationResult.validData.map(h => h.waterLevel);
+          const predictedValues = fittedWaterLevels.slice(0, validationResult.validData.length).map(f => parseFloat(f.fitted));
+          const rSquared = calculateRSquared(actualValues, predictedValues);
+          stressResult.confidence = rSquared < 0.5 ? 'low' : (rSquared > 0.7 ? 'high' : 'medium');
+        } else {
+          stressResult.confidence = 'low';
+        }
+        
+        predictions.stressCategoryTransition = stressResult;
+      } else {
+        const errorMsg = !validationResult.isValid 
+          ? `Data validation failed: ${validationResult.errors.join('; ')}`
+          : 'Unable to predict stress category transition - missing required data';
+        predictions.errors.push({
+          type: 'insufficient_data',
+          message: errorMsg,
+          affectedPredictions: ['stressCategoryTransition']
+        });
+      }
+    } catch (error) {
+      console.error('❌ Stress prediction error:', error.message);
+      predictions.errors.push({
+        type: 'computation_error',
+        message: `Failed to compute stress category transition: ${error.message}`,
+        affectedPredictions: ['stressCategoryTransition']
+      });
+    }
+    
+    try {
+      const seasonalValidation = validateSeasonalData(rechargePattern, 3);
+      
+      if (validationResult.isValid && seasonalValidation.isValid && validationResult.validData.length >= 3) {
+        const seasonalResult = predictSeasonalLevels(validationResult.validData, new Date(date), overallSlope);
+        const dataSpanYears = validationResult.metrics.dataSpanYears;
+        
+        if (seasonalValidation.cycleCount >= 5 && dataSpanYears >= 5) {
+          seasonalResult.confidence = 'high';
+        } else if (seasonalValidation.cycleCount >= 3 && dataSpanYears >= 3) {
+          seasonalResult.confidence = 'medium';
+        } else {
+          seasonalResult.confidence = 'low';
+        }
+        
+        predictions.seasonalPredictions = seasonalResult;
+      } else {
+        const errors = [...(seasonalValidation.errors || []), ...(validationResult.isValid ? [] : validationResult.errors)];
+        predictions.errors.push({
+          type: 'insufficient_data',
+          message: errors.length > 0 ? errors.join('; ') : 'Insufficient seasonal data for predictions (minimum 3 complete years required)',
+          affectedPredictions: ['seasonalPredictions']
+        });
+      }
+    } catch (error) {
+      console.error('❌ Seasonal prediction error:', error.message);
+      predictions.errors.push({
+        type: 'computation_error',
+        message: `Failed to compute seasonal predictions: ${error.message}`,
+        affectedPredictions: ['seasonalPredictions']
+      });
+    }
+
     const responseData = {
       userLocation: { lat: latitude, lon: longitude, date },
       nearestStation: {
@@ -473,6 +578,7 @@ router.post("/water-levels", async (req, res) => {
       rechargeTrend,
       stressAnalysis,
       plotData,
+      predictions,
     };
     
     // Cache the response

@@ -10,6 +10,7 @@ console.log(`🌍 District database loaded: ${STATS.totalDistricts} districts ac
  * @param {number} lon - Longitude
  * @returns {Object} District info with name and state
  */
+// Find nearest district using brute-force distance calculation (414 districts, fast enough)
 export function getDistrict(lat, lon) {
   let nearestDistrict = ALL_DISTRICTS[0];
   let minDistance = Infinity;
@@ -22,11 +23,10 @@ export function getDistrict(lat, lon) {
     }
   }
 
-  // Return both district name and state
   return {
     name: nearestDistrict.name,
     state: nearestDistrict.state,
-    distance: minDistance.toFixed(2) // Distance in km
+    distance: minDistance.toFixed(2)
   };
 }
 

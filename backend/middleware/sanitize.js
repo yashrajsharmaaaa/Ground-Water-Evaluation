@@ -3,7 +3,7 @@ import { logger } from '../utils/logger.js';
 const sanitizeString = (str) => {
   if (typeof str !== 'string') return str;
   
-  // Remove potential NoSQL injection patterns
+  // Remove $, {, } (MongoDB operators), .. (path traversal), and trim whitespace
   return str
     .replace(/[${}]/g, '')
     .replace(/\.\./g, '')
@@ -52,18 +52,19 @@ export const sanitizeInput = (req, res, next) => {
 };
 
 export const preventNoSQLInjection = (req, res, next) => {
+  // Check for MongoDB query operators that could be used for injection
   const checkForInjection = (obj) => {
     if (!obj || typeof obj !== 'object') return false;
     
     const str = JSON.stringify(obj);
     const patterns = [
-      /\$where/i,
-      /\$ne/i,
-      /\$gt/i,
-      /\$lt/i,
-      /\$regex/i,
-      /\$or/i,
-      /\$and/i,
+      /\$where/i,   // JavaScript execution
+      /\$ne/i,      // Not equal (bypass auth)
+      /\$gt/i,      // Greater than
+      /\$lt/i,      // Less than
+      /\$regex/i,   // Regex injection
+      /\$or/i,      // OR logic manipulation
+      /\$and/i,     // AND logic manipulation
     ];
     
     return patterns.some(pattern => pattern.test(str));

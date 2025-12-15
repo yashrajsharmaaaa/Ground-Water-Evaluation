@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 
+// Extract JWT from "Bearer <token>" format and verify
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];

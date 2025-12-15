@@ -6,11 +6,26 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
   },
   "author": "JalMitra Team",
   "license": "ISC",
   "description": "JalMitra - Your Groundwater Companion API",
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {},
+    "testMatch": [
+      "**/__tests__/**/*.test.js",
+      "**/?(*.)+(spec|test).js"
+    ],
+    "collectCoverageFrom": [
+      "utils/**/*.js",
+      "routes/**/*.js",
+      "!**/node_modules/**"
+    ]
+  },
   "dependencies": {
     "axios": "^1.11.0",
     "bcryptjs": "^3.0.3",
@@ -25,5 +40,10 @@
     "mongoose": "^9.0.1",
     "node-cache": "^5.1.2",
     "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "fast-check": "^4.4.0",
+    "jest": "^30.2.0"
   }
 }
