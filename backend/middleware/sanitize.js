@@ -32,15 +32,22 @@ const sanitizeObject = (obj) => {
 
 export const sanitizeInput = (req, res, next) => {
   try {
-    if (req.body) {
+    // Express 5 changed req.query to be read-only, so we need to check if it's writable
+    if (req.body && Object.keys(req.body).length > 0) {
       req.body = sanitizeObject(req.body);
     }
     
-    if (req.query) {
-      req.query = sanitizeObject(req.query);
+    // Skip query sanitization for GET requests with no query params
+    if (req.query && Object.keys(req.query).length > 0) {
+      try {
+        req.query = sanitizeObject(req.query);
+      } catch (e) {
+        // Express 5 may have read-only query, skip sanitization
+        console.warn('Query sanitization skipped (read-only)');
+      }
     }
     
-    if (req.params) {
+    if (req.params && Object.keys(req.params).length > 0) {
       req.params = sanitizeObject(req.params);
     }
     

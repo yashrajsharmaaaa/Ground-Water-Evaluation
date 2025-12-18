@@ -9,10 +9,15 @@ import waterLevelRouter from "./routes/water-level.js";
 import chat from "./routes/chat.js";
 import authRouter from "./routes/auth.js";
 import systemRouter from "./routes/system.js";
+import districtsRouter from "./routes/districts.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { requestTimer } from "./utils/performance.js";
+import { sanitizeInput, preventNoSQLInjection } from "./middleware/sanitize.js";
+import { validateEnv } from "./utils/validateEnv.js";
 
-dotenv.config({ path: [".env.local", ".env"] });
+dotenv.config({ path: ".env" });
+dotenv.config({ path: ".env.local" });
+validateEnv();
 
 const app = express();
 
@@ -46,16 +51,22 @@ app.use(requestTimer);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// CORS configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:8081', 'http://192.168.0.193:8081'];
+// Security: NoSQL injection prevention and input sanitization
+app.use(preventNoSQLInjection);
+app.use(sanitizeInput);
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+  : ["http://localhost:8081", "http://192.168.0.193:8081"];
 
 app.use(
   cors({
-    origin: process.env.NODE_ENV === 'production' 
-      ? allowedOrigins 
-      : "*",
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (process.env.NODE_ENV !== "production") return callback(null, true);
+      return callback(new Error("Not allowed by CORS"), false);
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
@@ -107,6 +118,7 @@ app.use("/api", waterLevelRouter);
 app.use("/api", chat);
 app.use("/api/auth", authRouter);
 app.use("/api/system", systemRouter);
+app.use("/api/districts", districtsRouter);
 
 // Error handlers (must be last)
 app.use(notFoundHandler);

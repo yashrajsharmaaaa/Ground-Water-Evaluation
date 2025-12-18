@@ -16,8 +16,11 @@ import andhraDistricts from './andhra-pradesh.json' with { type: 'json' };
 import punjabDistricts from './punjab.json' with { type: 'json' };
 import haryanaDistricts from './haryana.json' with { type: 'json' };
 import delhiDistricts from './delhi.json' with { type: 'json' };
+import chhattisgarhDistricts from './chhattisgarh.json' with { type: 'json' };
+import jharkhandDistricts from './jharkhand.json' with { type: 'json' };
+import odishaDistricts from './odisha.json' with { type: 'json' };
 
-// Combine all state districts
+// Combine all state districts into single array
 export const ALL_DISTRICTS = [
   ...rajasthanDistricts,
   ...gujaratDistricts,
@@ -31,6 +34,9 @@ export const ALL_DISTRICTS = [
   ...punjabDistricts,
   ...haryanaDistricts,
   ...delhiDistricts,
+  ...chhattisgarhDistricts,
+  ...jharkhandDistricts,
+  ...odishaDistricts,
 ];
 
 // Export by state for easy access
@@ -47,6 +53,9 @@ export const DISTRICTS_BY_STATE = {
   Punjab: punjabDistricts,
   Haryana: haryanaDistricts,
   Delhi: delhiDistricts,
+  Chhattisgarh: chhattisgarhDistricts,
+  Jharkhand: jharkhandDistricts,
+  Odisha: odishaDistricts,
 };
 
 // Get all unique states

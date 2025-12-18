@@ -16,8 +16,10 @@ import {
   fetchLocalWaterLevel,
 } from "../utils/helpers/fetch.js";
 import { haversine, toRad, formatDate } from "../utils/geo.js";
+import { chatValidation, validate } from "../middleware/validation.js";
 
-dotenv.config({ path: [".env.local", ".env"] });
+dotenv.config({ path: ".env" });
+dotenv.config({ path: ".env.local" });
 
 const router = Router();
 
@@ -63,7 +65,7 @@ function getLLMContent(resp) {
   return "";
 }
 
-router.post("/chat", async (req, res) => {
+router.post("/chat", chatValidation, validate, async (req, res) => {
   try {
     const {
       message,

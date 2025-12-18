@@ -40,12 +40,21 @@ const userSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Hash password before saving
-// ERROR FIX: Mongoose 6+ doesn't support next() callback in async middleware
-// Solution: Remove next() parameter and just return from async function
-userSchema.pre('save', async function() {
-  if (!this.isModified('password')) return;
-  this.password = await bcrypt.hash(this.password, 10);
+/**
+ * Hash password before saving to database
+ * Uses bcrypt with salt rounds of 10
+ */
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) {
+    return next();
+  }
+  
+  try {
+    this.password = await bcrypt.hash(this.password, 10);
+    next();
+  } catch (error) {
+    next(new Error(`Password hashing failed: ${error.message}`));
+  }
 });
 
 // Compare password method

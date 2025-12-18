@@ -1,5 +1,4 @@
 import { Router } from "express";
-import fetch from "node-fetch";
 import { getDistrict } from "../utils/helpers/geo.js";
 import { wrisCache, generateCacheKey } from "../utils/cache.js";
 import { haversine } from "../utils/geo.js";
@@ -11,6 +10,7 @@ import {
 } from "../utils/predictions.js";
 import { calculateRSquared } from "../utils/statistics.js";
 import { validatePredictionInputs, validateSeasonalData } from "../utils/validation.js";
+import { waterLevelValidation, validate } from "../middleware/validation.js";
 const router = Router();
 
 // Least squares linear regression: y = slope * x + intercept
@@ -29,7 +29,7 @@ function computeLinearRegression(x, y) {
   return { slope, intercept, fitted: x.map((xi) => slope * xi + intercept) };
 }
 
-router.post("/water-levels", async (req, res) => {
+router.post("/water-levels", waterLevelValidation, validate, async (req, res) => {
   try {
     const { lat, lon, date } = req.body;
 
@@ -38,7 +38,6 @@ router.post("/water-levels", async (req, res) => {
       return res.status(400).json({ error: "lat, lon, and date are required" });
     }
 
-    // Validate numeric values
     const latitude = parseFloat(lat);
     const longitude = parseFloat(lon);
     
@@ -48,11 +47,31 @@ router.post("/water-levels", async (req, res) => {
 
     // Validate coordinate ranges
     if (latitude < -90 || latitude > 90) {
-      return res.status(400).json({ error: "lat must be between -90 and 90" });
+      return res.status(400).json({ 
+        error: "Invalid latitude",
+        detail: "Latitude must be between -90 and 90 degrees"
+      });
     }
     
     if (longitude < -180 || longitude > 180) {
-      return res.status(400).json({ error: "lon must be between -180 and 180" });
+      return res.status(400).json({ 
+        error: "Invalid longitude",
+        detail: "Longitude must be between -180 and 180 degrees"
+      });
+    }
+
+    // Validate coordinates are within India (covers all 15 states in database)
+    const INDIA_BOUNDS = {
+      minLat: 6.5, maxLat: 35.5,
+      minLon: 68.0, maxLon: 97.5
+    };
+
+    if (latitude < INDIA_BOUNDS.minLat || latitude > INDIA_BOUNDS.maxLat ||
+        longitude < INDIA_BOUNDS.minLon || longitude > INDIA_BOUNDS.maxLon) {
+      return res.status(400).json({
+        error: "Coordinates outside India",
+        detail: "This service only covers Indian districts. Please provide coordinates within India."
+      });
     }
 
     // Validate date
@@ -94,27 +113,56 @@ router.post("/water-levels", async (req, res) => {
     
     console.log(`🔄 Fetching data for ${district}, ${state}...`);
     
-    // Add timeout for WRIS API
-    const controller = new AbortController();
-    const timeout = setTimeout(() => {
-      controller.abort();
-      console.log(`⏱️ Request timeout for ${district}`);
-    }, 90000); // 90 second timeout for slow WRIS API
+    // Use circuit breaker to prevent cascade failures from WRIS API
+    const { circuitBreaker } = await import('../utils/circuitBreaker.js');
     
-    let response, json;
+    let json;
     try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-      });
-      
-      if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
+      json = await circuitBreaker.execute(
+        'wris-api',
+        async () => {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => {
+            controller.abort();
+            console.log(`⏱️ Request timeout for ${district}`);
+          }, 90000); // 90 second timeout for slow WRIS API
+          
+          try {
+            const response = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              signal: controller.signal,
+            });
+            
+            if (!response.ok) {
+              throw new Error(`API request failed with status ${response.status}`);
+            }
+            
+            return await response.json();
+          } finally {
+            clearTimeout(timeout);
+          }
+        },
+        // Fallback to cached data if WRIS API fails
+        async () => {
+          console.log(`🔄 WRIS API failed, checking cache for ${district}`);
+          const cachedData = wrisCache.get(cacheKey);
+          if (cachedData) {
+            console.log(`✅ Using stale cache for ${district}`);
+            return { ...cachedData, stale: true };
+          }
+          throw new Error('No cached data available');
+        }
+      );
+    } catch (err) {
+      if (err.message.includes('Circuit breaker open')) {
+        return res.status(503).json({
+          error: "Service temporarily unavailable",
+          detail: "The water data service is experiencing issues. Please try again in a few moments.",
+          timestamp: new Date().toISOString()
+        });
       }
-      json = await response.json();
-    } finally {
-      clearTimeout(timeout); // Always clear timeout
+      throw err;
     }
     const rawRecords = json.data?.length || 0;
     console.log(`📥 Received ${rawRecords} raw records for ${district}`);

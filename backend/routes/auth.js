@@ -2,6 +2,7 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { registerValidation, loginValidation, validate } from '../middleware/validation.js';
 
 const router = Router();
 
@@ -11,17 +12,9 @@ const generateToken = (userId) => {
 };
 
 // Register
-router.post('/register', async (req, res) => {
+router.post('/register', registerValidation, validate, async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'All fields are required' });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -49,13 +42,9 @@ router.post('/register', async (req, res) => {
 });
 
 // Login
-router.post('/login', async (req, res) => {
+router.post('/login', loginValidation, validate, async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
 
     const user = await User.findOne({ email }).select('+password');
     if (!user) {

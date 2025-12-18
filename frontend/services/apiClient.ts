@@ -12,8 +12,23 @@ const apiClient: AxiosInstance = axios.create({
 const requestCache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Generate deterministic cache key for API requests
+ * Sorts object keys to ensure consistent cache hits regardless of key order
+ */
 const getCacheKey = (config: AxiosRequestConfig): string => {
-  return `${config.method}:${config.url}:${JSON.stringify(config.params || {})}:${JSON.stringify(config.data || {})}`;
+  const method = config.method || 'get';
+  const url = config.url || '';
+  
+  const sortedParams = config.params 
+    ? JSON.stringify(config.params, Object.keys(config.params).sort())
+    : '';
+  
+  const sortedData = config.data
+    ? JSON.stringify(config.data, Object.keys(config.data).sort())
+    : '';
+  
+  return `${method}:${url}:${sortedParams}:${sortedData}`;
 };
 
 const isCacheValid = (timestamp: number): boolean => {

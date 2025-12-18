@@ -342,26 +342,59 @@ export default function DashboardScreen() {
   };
 
   // Prepare data for recharge line chart
+  // ERROR FIX: Added validation to ensure data exists and handle edge cases
   const getRechargeLineData = () => {
     if (!groundwaterData?.rechargePattern || groundwaterData.rechargePattern.length === 0) {
       return { labels: [], datasets: [{ data: [] }] };
     }
-    const labels = groundwaterData.rechargePattern.map((item) => item.year.toString().slice(-2)); // Show last 2 digits
-    const data = groundwaterData.rechargePattern.map((item) => parseFloat(item.rechargeAmount));
+    
+    // Filter out invalid data points
+    const validData = groundwaterData.rechargePattern.filter(item => 
+      item.year && !isNaN(parseFloat(item.rechargeAmount))
+    );
+    
+    if (validData.length === 0) {
+      return { labels: [], datasets: [{ data: [] }] };
+    }
+    
+    const labels = validData.map((item) => item.year.toString().slice(-2)); // Show last 2 digits
+    const data = validData.map((item) => parseFloat(item.rechargeAmount));
+    
     return {
       labels,
       datasets: [{ data }],
     };
   };
 
-  // Prepare data for historical bar chart - Display ALL years from backend
+  // Prepare data for historical bar chart - Aggregate by YEAR to avoid overcrowding
+  // ERROR FIX: The previous code displayed every single data point (100+ records), causing unreadable charts.
+  // This fixes it by aggregating data by year and showing yearly averages.
   const getHistoricalBarData = () => {
     if (!groundwaterData?.historicalLevels || groundwaterData.historicalLevels.length === 0) {
       return { labels: [], datasets: [] };
     }
-    // Display all data, don't slice to maintain all years
-    const labels = groundwaterData.historicalLevels.map((item) => item.date.split("-")[0].slice(-2)); // Show last 2 digits of year
-    const data = groundwaterData.historicalLevels.map((item) => parseFloat(item.waterLevel));
+    
+    // Group data by year and calculate yearly average
+    const yearlyData = {};
+    groundwaterData.historicalLevels.forEach((item) => {
+      const year = item.date.split("-")[0]; // Extract full year (e.g., "2023")
+      const waterLevel = parseFloat(item.waterLevel);
+      
+      if (!yearlyData[year]) {
+        yearlyData[year] = { sum: 0, count: 0 };
+      }
+      yearlyData[year].sum += waterLevel;
+      yearlyData[year].count += 1;
+    });
+    
+    // Convert to arrays and calculate averages
+    const years = Object.keys(yearlyData).sort(); // Sort chronologically
+    const labels = years.map(year => year.slice(-2)); // Show last 2 digits (e.g., "23")
+    const data = years.map(year => {
+      const avg = yearlyData[year].sum / yearlyData[year].count;
+      return parseFloat(avg.toFixed(2));
+    });
+    
     return {
       labels,
       datasets: [{ data }],
@@ -386,12 +419,23 @@ export default function DashboardScreen() {
   };
 
   // Prepare data for Pre/Post Monsoon comparison chart
+  // ERROR FIX: Added validation to ensure sufficient data exists before rendering
   const getPrePostMonsoonData = () => {
     if (!groundwaterData?.plotData?.prePostMonsoon || groundwaterData.plotData.prePostMonsoon.length === 0) {
       return { labels: [], datasets: [] };
     }
-    // Show last 5 years for readability
-    const recentData = groundwaterData.plotData.prePostMonsoon.slice(-5);
+    
+    // Filter out invalid data points (missing pre or post values)
+    const validData = groundwaterData.plotData.prePostMonsoon.filter(item => 
+      item.year && !isNaN(parseFloat(item.pre)) && !isNaN(parseFloat(item.post))
+    );
+    
+    if (validData.length === 0) {
+      return { labels: [], datasets: [] };
+    }
+    
+    // Show last 5 years for readability, or all data if less than 5 years
+    const recentData = validData.slice(-5);
     const labels = recentData.map((item) => item.year.toString().slice(-2));
     const preData = recentData.map((item) => parseFloat(item.pre));
     const postData = recentData.map((item) => parseFloat(item.post));
@@ -717,35 +761,32 @@ export default function DashboardScreen() {
             </Card>
           )}
 
-          {/* Historical Data (Bar Chart) - Display ALL years */}
+          {/* Historical Data (Bar Chart) - Yearly Averages */}
           {groundwaterData.historicalLevels && groundwaterData.historicalLevels.length > 0 && (
             <Card style={styles.card}>
               <Card.Content>
-                <Text style={styles.cardTitle}>📊 Historical Water Levels</Text>
+                <Text style={styles.cardTitle}>📊 Historical Water Levels (Yearly Average)</Text>
+                <Text style={styles.chartSubtitle}>
+                  Aggregated from {groundwaterData.historicalLevels.length} data points
+                </Text>
                 <View style={styles.chartContainer}>
                   {loading ? (
                     <ActivityIndicator size="large" color="#3B82F6" />
                   ) : (
-                    <ScrollView 
-                      horizontal 
-                      showsHorizontalScrollIndicator={false}
-                      style={styles.horizontalScrollChart}
-                    >
-                      <BarChart
-                        data={getHistoricalBarData()}
-                        width={Math.max(chartWidth, groundwaterData.historicalLevels.length * 40)} // Dynamic width based on data
-                        height={chartHeight}
-                        yAxisSuffix="m"
-                        chartConfig={chartConfig}
-                        style={styles.chart}
-                        withInnerLines={true}
-                        withOuterLines={false}
-                        withHorizontalLines={true}
-                        withVerticalLines={false}
-                        showValuesOnTopOfBars={false}
-                        fromZero={false}
-                      />
-                    </ScrollView>
+                    <BarChart
+                      data={getHistoricalBarData()}
+                      width={chartWidth}
+                      height={chartHeight}
+                      yAxisSuffix="m"
+                      chartConfig={chartConfig}
+                      style={styles.chart}
+                      withInnerLines={true}
+                      withOuterLines={false}
+                      withHorizontalLines={true}
+                      withVerticalLines={false}
+                      showValuesOnTopOfBars={false}
+                      fromZero={false}
+                    />
                   )}
                 </View>
               </Card.Content>
@@ -753,10 +794,13 @@ export default function DashboardScreen() {
           )}
 
           {/* Trend Analysis (Bar Chart) */}
-          {groundwaterData.stressAnalysis && (
+          {groundwaterData.stressAnalysis && !groundwaterData.stressAnalysis.note && (
             <Card style={styles.card}>
               <Card.Content>
                 <Text style={styles.cardTitle}>📈 Decline Rate Analysis</Text>
+                <Text style={styles.chartSubtitle}>
+                  Annual water level change (meters/year)
+                </Text>
                 <View style={styles.chartContainer}>
                   {loading ? (
                     <ActivityIndicator size="large" color="#3B82F6" />
@@ -765,7 +809,7 @@ export default function DashboardScreen() {
                       data={getTrendBarData()}
                       width={chartWidth}
                       height={chartHeight}
-                      yAxisSuffix="m"
+                      yAxisSuffix="m/yr"
                       chartConfig={chartConfig}
                       style={styles.chart}
                       withInnerLines={true}

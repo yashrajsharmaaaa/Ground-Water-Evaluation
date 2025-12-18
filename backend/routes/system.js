@@ -67,8 +67,17 @@ router.post("/cache/clear", (req, res) => {
 });
 
 // System metrics endpoint
-router.get("/metrics", (req, res) => {
+router.get("/metrics", async (req, res) => {
   const memUsage = process.memoryUsage();
+  
+  // Get circuit breaker stats
+  let circuitBreakerStats = {};
+  try {
+    const { circuitBreaker } = await import('../utils/circuitBreaker.js');
+    circuitBreakerStats = circuitBreaker.getStats();
+  } catch (error) {
+    console.error('Failed to get circuit breaker stats:', error);
+  }
   
   res.json({
     timestamp: new Date().toISOString(),
@@ -84,6 +93,7 @@ router.get("/metrics", (req, res) => {
       version: process.version,
       platform: process.platform,
     },
+    circuitBreaker: circuitBreakerStats,
   });
 });
 
